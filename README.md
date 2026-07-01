@@ -1,5 +1,8 @@
-# dMenu NG
+<p align="center">
+  <img src="[assets/logo.png](https://www.nexusmods.com/skyrimspecialedition/mods/166751#)" alt="dMenu NG" width="220">
+</p>
 
+# dMenu NG
 dMenu NG is an unofficial standalone DLL update for
 [dMenu](https://github.com/D7ry/dMenu). It keeps the
 original mod's asset setup, but modernises the plugin for current Skyrim
