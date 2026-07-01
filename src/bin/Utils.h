@@ -16,7 +16,7 @@ namespace Utils
 	namespace imgui
 	{
 
-		void HoverNote(const char* text, const char* note = "*");
+		bool HoverNote(const char* text, const char* note = "*");
 	}
 
 
@@ -26,8 +26,9 @@ namespace Utils
 		auto data = RE::TESDataHandler::GetSingleton();
 		for (auto form : data->GetFormArray<T>()) {
 			if (form) {
-				if (!mods.contains(form->GetFile())) {
-					mods.insert(form->GetFile());
+				auto* file = form->GetFile();
+				if (file && !mods.contains(file)) {
+					mods.insert(file);
 				}
 			}
 		}
@@ -79,7 +80,9 @@ public:
 namespace ImGui
 {
 	bool SliderFloatWithSteps(const char* label, float* v, float v_min, float v_max, float v_step);
-	void HoverNote(const char* text, const char* note = "(?)");
+	bool HoverNoteIcon(const char* note = "(?)", const ImVec4* color = nullptr);
+	void ShowSimpleTooltip(const char* text);
+	bool HoverNote(const char* text, const char* note = "(?)");
 
 	bool ToggleButton(const char* str_id, bool* v);
 

@@ -20,6 +20,10 @@ using namespace std::literals;
 
 namespace logger = SKSE::log;
 
+// Simple logging helpers for convenience
+#define INFO(...)  ::logger::info(__VA_ARGS__)
+#define ERROR(...) ::logger::error(__VA_ARGS__)
+
 namespace util
 {
 	using SKSE::stl::report_and_fail;

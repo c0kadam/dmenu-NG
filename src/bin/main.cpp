@@ -1,17 +1,23 @@
 #include "Renderer.h"
 #include "InputListener.h"
 #include "Hooks.h"
+#include "DMenuAPI.h"
 #include "menus/ModSettings.h"
 #include "menus/Settings.h"
+
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 {
 	switch (a_msg->type) {
 	case SKSE::MessagingInterface::kDataLoaded:
+		// Load Interface\Translations\dmenu_<LANG>.txt once Scaleform is ready.
+		SKSE::Translation::ParseTranslation(std::string(Plugin::NAME));
+
 		Hooks::Install();
 		ModSettings::save_all_game_setting();  // in case some .esp overwrite the game setting // fixme
 		ModSettings::SendAllSettingsUpdateEvent(); // notify all mods to update their settings
 		break;
 	case SKSE::MessagingInterface::kPostLoad:
+		DMenuAPI::DispatchInterface();
 		break;
 	case SKSE::MessagingInterface::kPostLoadGame:
 		break;
@@ -41,18 +47,30 @@ namespace
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
 #endif
 
-#ifndef NDEBUG
-		const auto level = spdlog::level::trace;
-#else
-		const auto level = spdlog::level::info;
-#endif
+		const auto level = spdlog::level::err;
 
 		auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
 		log->set_level(level);
-		log->flush_on(level);
+		log->flush_on(spdlog::level::err);
 
 		spdlog::set_default_logger(std::move(log));
 		spdlog::set_pattern("%s(%#): [%^%l%$] %v"s);
+	}
+
+	void LogStartupBanner(const SKSE::LoadInterface* a_skse)
+	{
+		auto log = spdlog::default_logger();
+		if (!log) {
+			return;
+		}
+
+		const auto previousLevel = log->level();
+		log->set_level(spdlog::level::info);
+		logger::info("{} v{} by {}"sv, Plugin::NAME, Plugin::VERSION.string(), Plugin::AUTHOR);
+		logger::info("Runtime {}"sv, a_skse->RuntimeVersion().string());
+		logger::info("Log mode: startup banner + errors only"sv);
+		log->flush();
+		log->set_level(previousLevel);
 	}
 }
 
@@ -109,12 +127,8 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
-	REL::Module::reset();  // Clib-NG bug workaround
-
 	InitializeLog();
-	
-	
-	logger::info("{} v{}"sv, Plugin::NAME, Plugin::VERSION.string());
+	LogStartupBanner(a_skse);
 
 	SKSE::Init(a_skse);
 

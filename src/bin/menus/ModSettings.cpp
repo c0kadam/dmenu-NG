@@ -5,10 +5,15 @@
 
 
 #include "SimpleIni.h"
+#include <algorithm>
+#include <cctype>
+#include <set>
 #include <fstream>
 #include "ModSettings.h"
 
 #include "bin/Utils.h"
+#include "bin/ime/IMEWidgets.h"
+#include "bin/HintMedia.h"
 #include "Settings.h"
 static RE::GameSettingCollection* gsc = nullptr;
 inline bool ModSettings::entry_base::Control::Req::satisfied()
@@ -47,22 +52,871 @@ inline bool ModSettings::entry_base::Control::satisfied()
 
 using json = nlohmann::json;
 
+namespace
+{
+	static constexpr uint32_t kMouseLeftInput = 256;
+	static constexpr uint32_t kEnterInput = 28;
+	static constexpr uint32_t kSpaceInput = 57;
+	static constexpr uint32_t kNumEnterInput = 156;
+	static constexpr uint32_t kGamepadAInput = 276;
+
+	static const ModSettings::entry_base* g_hintFocusedEntryLastFrame = nullptr;
+	static const ModSettings::entry_base* g_hintFocusedEntryThisFrame = nullptr;
+	static const ModSettings::entry_base* g_hintToggledEntry = nullptr;
+
+	static const ModSettings::entry_base* g_pinnedMediaHintEntry = nullptr;
+	static ImVec2 g_pinnedMediaHintPos(0.0f, 0.0f);
+	static ImVec2 g_pinnedMediaAnchor(0.0f, 0.0f);
+	static double g_pinnedMediaCloseAt = 0.0;
+	static std::set<uint32_t> g_keyMapIgnoredInputs;
+	static int g_keyMapIgnoreUntilFrame = -1;
+
+	void ClearPinnedMediaHint()
+	{
+		g_pinnedMediaHintEntry = nullptr;
+		g_pinnedMediaCloseAt = 0.0;
+	}
+
+	void BeginKeyMapCapture(ModSettings::setting_keymap* keymap)
+	{
+		ModSettings::keyMapListening = keymap;
+		g_keyMapIgnoredInputs.clear();
+
+		if (ImGuiContext* ctx = ImGui::GetCurrentContext()) {
+			if (ctx->NavInputSource == ImGuiInputSource_Gamepad) {
+				g_keyMapIgnoredInputs.insert(kGamepadAInput);
+			} else if (ctx->NavInputSource == ImGuiInputSource_Keyboard) {
+				g_keyMapIgnoredInputs.insert(kEnterInput);
+				g_keyMapIgnoredInputs.insert(kNumEnterInput);
+				g_keyMapIgnoredInputs.insert(kSpaceInput);
+			}
+		}
+
+		if (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+			g_keyMapIgnoredInputs.insert(kMouseLeftInput);
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_Enter) || ImGui::IsKeyReleased(ImGuiKey_Enter)) {
+			g_keyMapIgnoredInputs.insert(kEnterInput);
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_KeypadEnter) || ImGui::IsKeyReleased(ImGuiKey_KeypadEnter)) {
+			g_keyMapIgnoredInputs.insert(kNumEnterInput);
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_Space) || ImGui::IsKeyReleased(ImGuiKey_Space)) {
+			g_keyMapIgnoredInputs.insert(kSpaceInput);
+		}
+		if (ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) || ImGui::IsKeyReleased(ImGuiKey_GamepadFaceDown)) {
+			g_keyMapIgnoredInputs.insert(kGamepadAInput);
+		}
+
+		g_keyMapIgnoreUntilFrame = ImGui::GetFrameCount() + 2;
+	}
+
+	void ClearKeyMapCapture()
+	{
+		ModSettings::keyMapListening = nullptr;
+		g_keyMapIgnoredInputs.clear();
+		g_keyMapIgnoreUntilFrame = -1;
+	}
+
+	void RefreshIgnoredKeyMapInputs()
+	{
+		if (g_keyMapIgnoreUntilFrame >= 0 && ImGui::GetFrameCount() > g_keyMapIgnoreUntilFrame) {
+			g_keyMapIgnoredInputs.clear();
+			g_keyMapIgnoreUntilFrame = -1;
+		}
+	}
+
+	float GetModSettingsFooterHeight()
+	{
+		// Taskbar-like footer strip at the bottom of Mod Configuration tab.
+		const float singleRowHeight = ImGui::GetFrameHeight() + 20.0f;
+		const float compactHintHeight = ImGui::GetTextLineHeightWithSpacing() * 2.0f + 18.0f;
+		return (std::max)(singleRowHeight, compactHintHeight);
+	}
+
+	bool IsItemHoveredOrFocused()
+	{
+		return ImGui::IsItemHovered() || ImGui::IsItemFocused();
+	}
+
+	bool DrawManualCollapsibleHeader(const char* id, const char* label, bool expanded)
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float height = ImGui::GetFrameHeight();
+		const ImVec2 size(ImGui::GetContentRegionAvail().x, height);
+		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+		ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0));
+		ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0, 0, 0, 0));
+		const bool pressed = ImGui::Selectable(id, expanded, ImGuiSelectableFlags_SpanAvailWidth, size);
+		ImGui::PopStyleColor(3);
+
+		const ImRect bb(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		const bool hovered = ImGui::IsItemHovered();
+		const bool active = ImGui::IsItemActive();
+		const bool focused = ImGui::IsItemFocused();
+
+		ImU32 bgColor = 0;
+		if (active) {
+			bgColor = ImGui::GetColorU32(ImGuiCol_HeaderActive);
+		} else if (hovered || focused) {
+			bgColor = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+		} else if (expanded) {
+			bgColor = ImGui::GetColorU32(ImGuiCol_Header);
+		} else {
+			ImVec4 frameBg = ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
+			frameBg.w = (std::max)(frameBg.w, 0.35f);
+			bgColor = ImGui::GetColorU32(frameBg);
+		}
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImGui::RenderNavHighlight(bb, ImGui::GetItemID(), ImGuiNavRenderCursorFlags_Compact);
+		ImGui::RenderFrame(bb.Min, bb.Max, bgColor, true, style.FrameRounding);
+		drawList->AddRect(bb.Min, bb.Max, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
+
+		const float arrowScale = 0.80f;
+		const float arrowSize = ImGui::GetFontSize() * arrowScale;
+		const ImVec2 arrowPos(
+			bb.Min.x + style.FramePadding.x,
+			bb.Min.y + (bb.GetHeight() - arrowSize) * 0.5f);
+		ImGui::RenderArrow(
+			drawList,
+			arrowPos,
+			ImGui::GetColorU32(ImGuiCol_Text),
+			expanded ? ImGuiDir_Down : ImGuiDir_Right,
+			arrowScale);
+
+		const float textOffsetX = style.FramePadding.x * 2.0f + ImGui::GetFontSize();
+		const ImVec2 textPos(
+			bb.Min.x + textOffsetX,
+			bb.Min.y + (bb.GetHeight() - ImGui::GetTextLineHeight()) * 0.5f);
+		drawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), label);
+
+		return pressed;
+	}
+
+	std::string ToLowerASCII(std::string value)
+	{
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+			return static_cast<char>(std::tolower(c));
+		});
+		return value;
+	}
+
+	std::string ResolveHintPath(const std::string& rawPath)
+	{
+		if (rawPath.empty()) {
+			return {};
+		}
+
+		std::error_code ec;
+		const std::filesystem::path source(rawPath);
+		std::filesystem::path absPath = source.is_absolute() ? source : std::filesystem::absolute(source, ec);
+		if (ec) {
+			absPath = source;
+			ec.clear();
+		}
+
+		std::filesystem::path normalized = std::filesystem::weakly_canonical(absPath, ec);
+		if (ec) {
+			normalized = absPath.lexically_normal();
+		}
+
+		return normalized.string();
+	}
+
+	std::string ToBackslashPath(const std::filesystem::path& pathValue)
+	{
+		std::string text = pathValue.string();
+		std::replace(text.begin(), text.end(), '/', '\\');
+		return text;
+	}
+
+	std::string ToDataRelativePathIfPossible(const std::filesystem::path& pathValue)
+	{
+		std::error_code ec;
+		std::filesystem::path normalized = std::filesystem::weakly_canonical(pathValue, ec);
+		if (ec) {
+			normalized = pathValue.lexically_normal();
+		}
+
+		std::string backslashPath = ToBackslashPath(normalized);
+		if (backslashPath.empty()) {
+			return backslashPath;
+		}
+
+		std::string lowerPath = ToLowerASCII(backslashPath);
+		if (lowerPath == "data" || lowerPath.rfind("data\\", 0) == 0) {
+			return backslashPath;
+		}
+
+		const std::string token = "\\data\\";
+		const std::size_t tokenPos = lowerPath.find(token);
+		if (tokenPos != std::string::npos) {
+			return "Data\\" + backslashPath.substr(tokenPos + token.size());
+		}
+
+		if (lowerPath.size() >= 5 && lowerPath.compare(lowerPath.size() - 5, 5, "\\data") == 0) {
+			return "Data";
+		}
+
+		// MO2/Vortex gibi ortamlarda mutlak yol "Data" segmenti içermeyebilir.
+		// Bu durumda bilinen Data kök alt klasörlerini anchor alıp taşınabilir "Data\\..." üret.
+		static constexpr const char* DATA_ANCHORS[] = {
+			"\\skse\\",
+			"\\meshes\\",
+			"\\textures\\",
+			"\\interface\\",
+			"\\scripts\\",
+			"\\sound\\",
+			"\\music\\",
+			"\\strings\\",
+			"\\video\\",
+			"\\seq\\",
+			"\\lodsettings\\",
+			"\\mcm\\"
+		};
+		for (const char* anchor : DATA_ANCHORS) {
+			const std::string anchorText(anchor);
+			const std::size_t anchorPos = lowerPath.find(anchorText);
+			if (anchorPos == std::string::npos) {
+				continue;
+			}
+			const std::size_t relativeStart = backslashPath[anchorPos] == '\\' ? anchorPos + 1 : anchorPos;
+			if (relativeStart < backslashPath.size()) {
+				return "Data\\" + backslashPath.substr(relativeStart);
+			}
+		}
+
+		return backslashPath;
+	}
+
+	std::filesystem::path ResolvePickerBasePath(const std::string& rawPath)
+	{
+		if (rawPath.empty()) {
+			return {};
+		}
+
+		std::string normalized = rawPath;
+		std::replace(normalized.begin(), normalized.end(), '/', '\\');
+		const std::string lowered = ToLowerASCII(normalized);
+		if (lowered == "data" || lowered.rfind("data\\", 0) == 0) {
+			std::string tail = normalized.size() > 4 ? normalized.substr(4) : "";
+			while (!tail.empty() && (tail.front() == '\\' || tail.front() == '/')) {
+				tail.erase(tail.begin());
+			}
+			return std::filesystem::absolute(std::filesystem::path("Data") / std::filesystem::path(tail));
+		}
+
+		std::filesystem::path p(normalized);
+		return p.is_absolute() ? p : std::filesystem::absolute(p);
+	}
+
+	bool IsFlipbookFramePath(const std::filesystem::path& pathValue)
+	{
+		const std::string ext = ToLowerASCII(pathValue.extension().string());
+		return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tif" || ext == ".tiff";
+	}
+
+	bool IsMediaTypeFileMatch(const std::filesystem::path& pathValue, ModSettings::entry_base::HintMediaConfig::Type type)
+	{
+		const std::string ext = ToLowerASCII(pathValue.extension().string());
+		switch (type) {
+		case ModSettings::entry_base::HintMediaConfig::Type::Gif:
+			return ext == ".gif";
+		case ModSettings::entry_base::HintMediaConfig::Type::Webp:
+			return ext == ".webp";
+		case ModSettings::entry_base::HintMediaConfig::Type::Webm:
+			return ext == ".webm";
+		case ModSettings::entry_base::HintMediaConfig::Type::Flipbook:
+		default:
+			return IsFlipbookFramePath(pathValue);
+		}
+	}
+
+	bool IsDataRelativePathText(const std::string& rawPath)
+	{
+		if (rawPath.empty()) {
+			return false;
+		}
+		std::string normalized = rawPath;
+		std::replace(normalized.begin(), normalized.end(), '/', '\\');
+		const std::string lowered = ToLowerASCII(normalized);
+		return lowered == "data" || lowered.rfind("data\\", 0) == 0;
+	}
+
+	void SyncHintMediaPathAndCache(ModSettings::entry_base::HintMediaConfig& media)
+	{
+		if (media.path.empty()) {
+			media.resolved_path.clear();
+			media.cacheKey.clear();
+			return;
+		}
+
+		media.path = ToDataRelativePathIfPossible(std::filesystem::path(media.path));
+		media.resolved_path = ResolveHintPath(media.path);
+		// Keep cache key deterministic and portable by tracking the stored path text.
+		media.cacheKey = media.path;
+	}
+
+	std::vector<std::string> BuildHintMediaCandidates(
+		const std::filesystem::path& basePath,
+		ModSettings::entry_base::HintMediaConfig::Type type)
+	{
+		std::vector<std::string> candidates;
+		std::error_code ec;
+		if (!std::filesystem::exists(basePath, ec) || ec || !std::filesystem::is_directory(basePath, ec) || ec) {
+			return candidates;
+		}
+
+		std::set<std::string> uniqueCandidates;
+		for (std::filesystem::recursive_directory_iterator it(basePath, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+			if (ec) {
+				break;
+			}
+
+			const auto& p = it->path();
+			if (type == ModSettings::entry_base::HintMediaConfig::Type::Flipbook) {
+				if (!it->is_regular_file(ec) || ec || !IsFlipbookFramePath(p)) {
+					continue;
+				}
+				uniqueCandidates.insert(ToDataRelativePathIfPossible(p.parent_path()));
+			} else {
+				if (!it->is_regular_file(ec) || ec || !IsMediaTypeFileMatch(p, type)) {
+					continue;
+				}
+				uniqueCandidates.insert(ToDataRelativePathIfPossible(p));
+			}
+		}
+
+		candidates.assign(uniqueCandidates.begin(), uniqueCandidates.end());
+		return candidates;
+	}
+
+	bool ContainsCaseInsensitive(const std::string& value, const std::string& needle)
+	{
+		if (needle.empty()) {
+			return true;
+		}
+		return ToLowerASCII(value).find(ToLowerASCII(needle)) != std::string::npos;
+	}
+
+	std::string GetBindingDisplayName(uint32_t inputCode)
+	{
+		if (inputCode == 0) {
+			return TR("key_unmapped", "Unmapped");
+		}
+
+		return ModSettings::setting_keymap::keyid_to_str(static_cast<int>(inputCode));
+	}
+
+	std::string BuildBindingChord(uint32_t primaryInput, uint32_t modifierInput)
+	{
+		if (primaryInput == 0) {
+			return TR("key_unmapped", "Unmapped");
+		}
+
+		if (modifierInput == 0) {
+			return GetBindingDisplayName(primaryInput);
+		}
+
+		return fmt::format(
+			fmt::runtime(TR("modsettings_footer_combo_fmt", "{} + {}")),
+			GetBindingDisplayName(modifierInput),
+			GetBindingDisplayName(primaryInput));
+	}
+
+	struct FooterHighlightToken
+	{
+		std::string text;
+		ImVec4 color;
+	};
+
+	void DrawFooterTextSegment(const char* text, const ImVec4* color, bool continueLine)
+	{
+		if (text == nullptr || text[0] == '\0') {
+			return;
+		}
+
+		if (continueLine) {
+			ImGui::SameLine(0.0f, 0.0f);
+		}
+
+		if (color != nullptr) {
+			ImGui::TextColored(*color, "%s", text);
+		} else {
+			ImGui::TextUnformatted(text);
+		}
+	}
+
+	void DrawFooterFormattedText(const char* formatText, std::initializer_list<FooterHighlightToken> highlights)
+	{
+		const std::string format = formatText ? formatText : "";
+		auto tokenIt = highlights.begin();
+		std::size_t cursor = 0;
+		bool continueLine = false;
+
+		while (cursor <= format.size()) {
+			const std::size_t placeholderPos = format.find("{}", cursor);
+			const std::size_t segmentLength =
+				placeholderPos == std::string::npos ? format.size() - cursor : placeholderPos - cursor;
+			const std::string segment = format.substr(cursor, segmentLength);
+			if (!segment.empty()) {
+				DrawFooterTextSegment(segment.c_str(), nullptr, continueLine);
+				continueLine = true;
+			}
+
+			if (placeholderPos == std::string::npos) {
+				break;
+			}
+
+			if (tokenIt != highlights.end()) {
+				DrawFooterTextSegment(tokenIt->text.c_str(), &tokenIt->color, continueLine);
+				continueLine = true;
+				++tokenIt;
+			}
+
+			cursor = placeholderPos + 2;
+		}
+	}
+
+	void ShowModSettingsFooterHints(float availableWidth)
+	{
+		if (availableWidth < 180.0f) {
+			return;
+		}
+
+		const ImVec4 helpTextColor(0.90f, 0.90f, 0.90f, 1.0f);
+		const ImVec4 noteColor(1.00f, 0.80f, 0.25f, 1.0f);
+		const ImVec4 mkbBindingColor(0.45f, 0.82f, 1.00f, 1.0f);
+		const ImVec4 gamepadBindingColor(0.58f, 0.92f, 0.46f, 1.0f);
+		const bool hasHintBinding = Settings::key_toggle_hints_gamepad != 0;
+		const bool hasMkbBinding = Settings::key_toggle_dmenu_mkb != 0;
+		const bool hasGamepadBinding = Settings::key_toggle_dmenu_gamepad != 0;
+
+		ImGui::BeginChild(
+			"##modsettings_footer_hints",
+			ImVec2(availableWidth, 0.0f),
+			false,
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 4.0f));
+		ImGui::PushStyleColor(ImGuiCol_Text, helpTextColor);
+
+		ImGui::TextUnformatted(TR("modsettings_footer_hint_prefix", "Hint: click"));
+		ImGui::SameLine(0.0f, 4.0f);
+		ImGui::TextColored(noteColor, "(?)");
+		ImGui::SameLine(0.0f, 4.0f);
+		if (hasHintBinding) {
+			DrawFooterFormattedText(
+				TR("modsettings_footer_hint_suffix", "or press {}"),
+				{ FooterHighlightToken{ GetBindingDisplayName(Settings::key_toggle_hints_gamepad), gamepadBindingColor } });
+		} else {
+			ImGui::TextUnformatted(TR("modsettings_footer_hint_click_only", "for help"));
+		}
+
+		if (hasMkbBinding && hasGamepadBinding) {
+			DrawFooterFormattedText(
+				TR("modsettings_footer_toggle_both", "dMenu: MKB {} | Pad {}"),
+				{
+					FooterHighlightToken{ BuildBindingChord(Settings::key_toggle_dmenu_mkb, Settings::key_toggle_modifier_mkb), mkbBindingColor },
+					FooterHighlightToken{ BuildBindingChord(Settings::key_toggle_dmenu_gamepad, Settings::key_toggle_modifier_gamepad), gamepadBindingColor }
+				});
+		} else if (hasMkbBinding) {
+			DrawFooterFormattedText(
+				TR("modsettings_footer_toggle_mkb", "dMenu: MKB {}"),
+				{ FooterHighlightToken{ BuildBindingChord(Settings::key_toggle_dmenu_mkb, Settings::key_toggle_modifier_mkb), mkbBindingColor } });
+		} else if (hasGamepadBinding) {
+			DrawFooterFormattedText(
+				TR("modsettings_footer_toggle_gamepad", "dMenu: Pad {}"),
+				{ FooterHighlightToken{ BuildBindingChord(Settings::key_toggle_dmenu_gamepad, Settings::key_toggle_modifier_gamepad), gamepadBindingColor } });
+		} else {
+			ImGui::TextUnformatted(TR("modsettings_footer_toggle_none", "dMenu: Unmapped"));
+		}
+
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar();
+		ImGui::EndChild();
+	}
+
+	struct HintPickerState
+	{
+		std::string basePath = "Data\\SKSE\\Plugins\\dMenu\\hints";
+		std::string filter;
+		std::vector<std::string> candidates;
+		ModSettings::entry_base::HintMediaConfig::Type mediaType = ModSettings::entry_base::HintMediaConfig::Type::Flipbook;
+		bool loaded = false;
+	};
+
+	HintPickerState& GetHintPickerState()
+	{
+		static HintPickerState state;
+		return state;
+	}
+
+	ModSettings::entry_base::HintConfig::ShowOn ParseHintShowOn(const nlohmann::json& hintJson)
+	{
+		const std::string showOn = ToLowerASCII(hintJson.value("showOn", "note"));
+		if (showOn == "control") {
+			return ModSettings::entry_base::HintConfig::ShowOn::Control;
+		}
+		if (showOn == "both") {
+			return ModSettings::entry_base::HintConfig::ShowOn::Both;
+		}
+		return ModSettings::entry_base::HintConfig::ShowOn::Note;
+	}
+
+	std::optional<ModSettings::entry_base::HintMediaConfig::Type> ParseHintMediaType(const nlohmann::json& mediaJson)
+	{
+		const std::string type = ToLowerASCII(mediaJson.value("type", "flipbook"));
+		if (type == "flipbook") {
+			return ModSettings::entry_base::HintMediaConfig::Type::Flipbook;
+		}
+		if (type == "gif") {
+			return ModSettings::entry_base::HintMediaConfig::Type::Gif;
+		}
+		if (type == "webp") {
+			return ModSettings::entry_base::HintMediaConfig::Type::Webp;
+		}
+		if (type == "webm") {
+			return ModSettings::entry_base::HintMediaConfig::Type::Webm;
+		}
+		return std::nullopt;
+	}
+
+	void ParseHintConfig(const nlohmann::json& entryJson, ModSettings::entry_base* entry)
+	{
+		if (!entryJson.contains("hint") || !entryJson["hint"].is_object()) {
+			return;
+		}
+
+		const auto& hintJson = entryJson["hint"];
+		ModSettings::entry_base::HintConfig hintConfig;
+		hintConfig.showOn = ParseHintShowOn(hintJson);
+
+		if (hintJson.contains("media") && hintJson["media"].is_object()) {
+			const auto& mediaJson = hintJson["media"];
+			auto mediaType = ParseHintMediaType(mediaJson);
+			if (mediaType.has_value()) {
+				ModSettings::entry_base::HintMediaConfig mediaConfig;
+				mediaConfig.type = *mediaType;
+				mediaConfig.path = mediaJson.value("path", "");
+				mediaConfig.resolved_path = ResolveHintPath(mediaConfig.path);
+				mediaConfig.cacheKey = mediaJson.value("cacheKey", "");
+				if (mediaConfig.cacheKey.empty()) {
+					mediaConfig.cacheKey = mediaConfig.path;
+				}
+				mediaConfig.fps = (std::clamp)(mediaJson.value("fps", 24), 1, 120);
+				mediaConfig.maxW = (std::clamp)(mediaJson.value("maxW", 420), 32, 1024);
+				mediaConfig.maxH = (std::clamp)(mediaJson.value("maxH", 240), 32, 1024);
+				mediaConfig.loop = mediaJson.value("loop", true);
+				mediaConfig.preload = mediaJson.value("preload", false);
+
+				if (!mediaConfig.path.empty()) {
+					hintConfig.media = std::move(mediaConfig);
+				}
+			}
+		}
+
+		entry->hint = std::move(hintConfig);
+	}
+
+	const char* HintShowOnToString(ModSettings::entry_base::HintConfig::ShowOn showOn)
+	{
+		switch (showOn) {
+		case ModSettings::entry_base::HintConfig::ShowOn::Control:
+			return "control";
+		case ModSettings::entry_base::HintConfig::ShowOn::Both:
+			return "both";
+		case ModSettings::entry_base::HintConfig::ShowOn::Note:
+		default:
+			return "note";
+		}
+	}
+
+	int HintShowOnToIndex(ModSettings::entry_base::HintConfig::ShowOn showOn)
+	{
+		switch (showOn) {
+		case ModSettings::entry_base::HintConfig::ShowOn::Control:
+			return 1;
+		case ModSettings::entry_base::HintConfig::ShowOn::Both:
+			return 2;
+		case ModSettings::entry_base::HintConfig::ShowOn::Note:
+		default:
+			return 0;
+		}
+	}
+
+	ModSettings::entry_base::HintConfig::ShowOn HintShowOnFromIndex(int index)
+	{
+		switch (index) {
+		case 1:
+			return ModSettings::entry_base::HintConfig::ShowOn::Control;
+		case 2:
+			return ModSettings::entry_base::HintConfig::ShowOn::Both;
+		case 0:
+		default:
+			return ModSettings::entry_base::HintConfig::ShowOn::Note;
+		}
+	}
+
+	const char* HintMediaTypeToString(ModSettings::entry_base::HintMediaConfig::Type mediaType)
+	{
+		switch (mediaType) {
+		case ModSettings::entry_base::HintMediaConfig::Type::Gif:
+			return "gif";
+		case ModSettings::entry_base::HintMediaConfig::Type::Webp:
+			return "webp";
+		case ModSettings::entry_base::HintMediaConfig::Type::Webm:
+			return "webm";
+		case ModSettings::entry_base::HintMediaConfig::Type::Flipbook:
+		default:
+			return "flipbook";
+		}
+	}
+
+	int HintMediaTypeToIndex(ModSettings::entry_base::HintMediaConfig::Type mediaType)
+	{
+		switch (mediaType) {
+		case ModSettings::entry_base::HintMediaConfig::Type::Flipbook:
+			return 0;
+		case ModSettings::entry_base::HintMediaConfig::Type::Gif:
+			return 1;
+		case ModSettings::entry_base::HintMediaConfig::Type::Webp:
+			return 2;
+		case ModSettings::entry_base::HintMediaConfig::Type::Webm:
+			return 3;
+		default:
+			return 0;
+		}
+	}
+
+	ModSettings::entry_base::HintMediaConfig::Type HintMediaTypeFromIndex(int index)
+	{
+		switch (index) {
+		case 1:
+			return ModSettings::entry_base::HintMediaConfig::Type::Gif;
+		case 2:
+			return ModSettings::entry_base::HintMediaConfig::Type::Webp;
+		case 3:
+			return ModSettings::entry_base::HintMediaConfig::Type::Webm;
+		case 0:
+		default:
+			return ModSettings::entry_base::HintMediaConfig::Type::Flipbook;
+		}
+	}
+
+	void PopulateHintJson(const ModSettings::entry_base* entry, nlohmann::json& entryJson)
+	{
+		if (!entry->hint.has_value()) {
+			return;
+		}
+
+		nlohmann::json hintJson = nlohmann::json::object();
+		hintJson["showOn"] = HintShowOnToString(entry->hint->showOn);
+
+		if (entry->hint->media.has_value()) {
+			const auto& media = *entry->hint->media;
+			nlohmann::json mediaJson = nlohmann::json::object();
+			mediaJson["type"] = HintMediaTypeToString(media.type);
+			const std::string portablePath = media.path.empty() ? media.path : ToDataRelativePathIfPossible(std::filesystem::path(media.path));
+			mediaJson["path"] = portablePath;
+			mediaJson["fps"] = media.fps;
+			mediaJson["maxW"] = media.maxW;
+			mediaJson["maxH"] = media.maxH;
+			mediaJson["loop"] = media.loop;
+			mediaJson["preload"] = media.preload;
+			if (!media.cacheKey.empty()) {
+				mediaJson["cacheKey"] = media.cacheKey;
+			}
+			hintJson["media"] = std::move(mediaJson);
+		}
+
+		entryJson["hint"] = std::move(hintJson);
+	}
+
+	bool ShowEntryHintTooltip(ModSettings::entry_base* entry, bool hoveredControl, bool showNoteIcon)
+	{
+		const ImVec2 controlRectMin = ImGui::GetItemRectMin();
+		const ImVec2 controlRectMax = ImGui::GetItemRectMax();
+
+		if (ImGui::IsItemFocused()) {
+			g_hintFocusedEntryThisFrame = entry;
+		}
+		const bool hintToggledForEntry = (g_hintToggledEntry == entry);
+
+		const bool hasDesc = !entry->desc.empty();
+		const bool hasHintConfig = entry->hint.has_value();
+		const bool hasAnyHint = hasDesc || hasHintConfig;
+		const bool hasMedia = hasHintConfig && entry->hint->media.has_value();
+		bool hoveredNote = false;
+		bool clickedNote = false;
+
+		if (showNoteIcon && hasAnyHint) {
+			ImGui::SameLine();
+			const ImVec4 mediaNoteColor(1.00f, 0.80f, 0.25f, 1.00f);
+			hoveredNote = ImGui::HoverNoteIcon("(?)", hasMedia ? &mediaNoteColor : nullptr);
+			clickedNote = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+			if (clickedNote) {
+				const ImVec2 rectMin = ImGui::GetItemRectMin();
+				const ImVec2 rectMax = ImGui::GetItemRectMax();
+				g_pinnedMediaHintPos = ImVec2(rectMax.x + 8.0f, rectMin.y);
+				g_pinnedMediaAnchor = ImVec2((rectMin.x + rectMax.x) * 0.5f, (rectMin.y + rectMax.y) * 0.5f);
+				g_pinnedMediaCloseAt = 0.0;
+			}
+		}
+
+		const bool useClickToOpenMedia = hasMedia && showNoteIcon && Settings::hint_media_click_to_open;
+		if (useClickToOpenMedia && clickedNote) {
+			if (g_pinnedMediaHintEntry == entry) {
+				ClearPinnedMediaHint();
+			} else {
+				g_pinnedMediaHintEntry = entry;
+				g_pinnedMediaCloseAt = 0.0;
+			}
+		}
+
+		const bool focusedThisFrame = ImGui::IsItemFocused();
+		if (focusedThisFrame && !hoveredNote && !clickedNote) {
+			g_hintFocusedEntryThisFrame = entry;
+		}
+
+		if (g_pinnedMediaHintEntry != nullptr && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+			ClearPinnedMediaHint();
+		}
+
+		bool forceShowMedia = useClickToOpenMedia && (g_pinnedMediaHintEntry == entry);
+		if (forceShowMedia) {
+			const ImVec2 mousePos = ImGui::GetMousePos();
+			const float hoverRadius = (std::clamp)(Settings::hint_media_click_hover_radius, 8.0f, 480.0f);
+			const float dx = mousePos.x - g_pinnedMediaAnchor.x;
+			const float dy = mousePos.y - g_pinnedMediaAnchor.y;
+			const bool insideRadius = (dx * dx + dy * dy) <= (hoverRadius * hoverRadius);
+			const bool shouldKeepOpen = hoveredControl || hoveredNote || insideRadius;
+
+			if (shouldKeepOpen) {
+				g_pinnedMediaCloseAt = 0.0;
+			} else {
+				const float graceSec = (std::clamp)(static_cast<float>(Settings::hint_media_click_close_grace_ms), 0.0f, 1500.0f) / 1000.0f;
+				const double now = ImGui::GetTime();
+				if (graceSec <= 0.0f) {
+					ClearPinnedMediaHint();
+					forceShowMedia = false;
+				} else if (g_pinnedMediaCloseAt <= 0.0) {
+					g_pinnedMediaCloseAt = now + graceSec;
+				} else if (now >= g_pinnedMediaCloseAt) {
+					ClearPinnedMediaHint();
+					forceShowMedia = false;
+				}
+			}
+
+			if (forceShowMedia && Settings::hint_media_click_follow_mouse) {
+				const float offsetX = (std::clamp)(Settings::hint_media_click_follow_offset_x, -640.0f, 640.0f);
+				const float offsetY = (std::clamp)(Settings::hint_media_click_follow_offset_y, -640.0f, 640.0f);
+				g_pinnedMediaHintPos = ImVec2(mousePos.x + offsetX, mousePos.y + offsetY);
+			}
+		}
+
+		// While a media hint is pinned on another entry, suppress other hover hints.
+		if (g_pinnedMediaHintEntry != nullptr && g_pinnedMediaHintEntry != entry) {
+			return false;
+		}
+		if (forceShowMedia && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+			ClearPinnedMediaHint();
+			return false;
+		}
+
+		const bool mouseInteractingWithEntry = hoveredNote || clickedNote;
+		const bool forceByToggle = hintToggledForEntry && !mouseInteractingWithEntry;
+		const ImVec2 toggledHintPos(controlRectMax.x + 8.0f, controlRectMin.y);
+
+		if (hasHintConfig) {
+			HintMediaManager::Get().TryPreload(*entry);
+			bool tooltipHoveredControl = hoveredControl;
+			bool tooltipHoveredNote = hoveredNote;
+			if (useClickToOpenMedia) {
+				// Backup behavior: in click-to-open mode, don't auto-open on hover.
+				tooltipHoveredControl = false;
+				tooltipHoveredNote = false;
+			}
+
+			bool forceTooltip = forceShowMedia;
+			const ImVec2* forcedTooltipPos = forceShowMedia ? &g_pinnedMediaHintPos : nullptr;
+			if (forceByToggle) {
+				forceTooltip = true;
+				forcedTooltipPos = &toggledHintPos;
+			}
+
+			if (HintMediaManager::Get().DrawHintTooltip(
+				    *entry,
+				    entry->desc.get(),
+				    tooltipHoveredControl,
+				    tooltipHoveredNote,
+				    forceTooltip,
+				    forcedTooltipPos)) {
+				return true;
+			}
+			// If a hint config is present and nothing is drawable, keep behavior silent.
+			return false;
+		}
+
+		if (forceByToggle && hasDesc) {
+			ImGui::SetNextWindowPos(toggledHintPos, ImGuiCond_Always);
+			ImGui::ShowSimpleTooltip(entry->desc.get());
+			return true;
+		}
+
+		if (hasDesc && showNoteIcon && hoveredNote) {
+			ImGui::ShowSimpleTooltip(entry->desc.get());
+			return true;
+		}
+		if (hasDesc && !showNoteIcon && hoveredControl) {
+			ImGui::ShowSimpleTooltip(entry->desc.get());
+			return true;
+		}
+
+		return false;
+	}
+}
+
 void ModSettings::SendAllSettingsUpdateEvent()
 {
 	for (auto& mod : mods) {
 		SendSettingsUpdateEvent(mod->name);
 	}
 }
+
+void ModSettings::FlushIniDirtyMods()
+{
+	for (auto& mod : ini_dirty_mods) {
+		flush_ini(mod);
+		flush_game_setting(mod);
+		for (auto& callback : mod->callbacks) {
+			callback();
+		}
+		SendSettingsUpdateEvent(mod->name);
+	}
+	ini_dirty_mods.clear();
+}
+
+void ModSettings::FlushJsonDirtyMods()
+{
+	for (auto& mod : json_dirty_mods) {
+		flush_json(mod);
+	}
+	json_dirty_mods.clear();
+}
 void ModSettings::show_reloadTranslationButton()
 {
-	if (ImGui::Button("Reload Translation")) {
+	if (ImGui::Button(TR("modsettings_reload_translation", "Reload Translation"))) {
 		Translator::ReLoadTranslations();
 	}
 }
   // not used anymore, we auto save.
 void ModSettings::show_saveButton()
 {
-	bool unsaved_changes = !ini_dirty_mods.empty();
+	const bool has_ini_changes = !ini_dirty_mods.empty();
+	const bool has_json_changes = edit_mode && !json_dirty_mods.empty();
+	bool unsaved_changes = has_ini_changes || has_json_changes;
 	
 	if (unsaved_changes) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.3f, 1.0f));
@@ -70,16 +924,13 @@ void ModSettings::show_saveButton()
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.4f, 0.9f, 0.5f, 1.0f));
     }
 
-    if (ImGui::Button("Save")) {
-		for (auto& mod : ini_dirty_mods) {
-			flush_ini(mod);
-			flush_game_setting(mod);
-			for (auto callback : mod->callbacks) {
-				callback();
-			}
-			SendSettingsUpdateEvent(mod->name);
+    if (ImGui::Button(TR("modsettings_save", "Save"))) {
+		if (has_ini_changes) {
+			FlushIniDirtyMods();
 		}
-		ini_dirty_mods.clear();
+		if (has_json_changes) {
+			FlushJsonDirtyMods();
+		}
     }
 
     if (unsaved_changes) {
@@ -91,7 +942,7 @@ void ModSettings::show_cancelButton()
 {
 	bool unsaved_changes = !ini_dirty_mods.empty();
 
-	if (ImGui::Button("Cancel")) {
+	if (ImGui::Button(TR("modsettings_cancel", "Cancel"))) {
 		for (auto& mod : ini_dirty_mods) {
 			load_ini(mod);
 		}
@@ -109,12 +960,11 @@ void ModSettings::show_saveJsonButton()
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.4f, 0.9f, 0.5f, 1.0f));
 	}
 
-	if (ImGui::Button("Save Config")) {
-		for (auto& mod : json_dirty_mods) {
-			flush_json(mod);
-		}
-		json_dirty_mods.clear();
+	ImGui::PushID("save_config_button");
+	if (ImGui::Button(TR("modsettings_save_config", "Save Config"))) {
+		FlushJsonDirtyMods();
 	}
+	ImGui::PopID();
 
 	if (unsaved_changes) {
 		ImGui::PopStyleColor(3);
@@ -123,24 +973,80 @@ void ModSettings::show_saveJsonButton()
 
 void ModSettings::show_buttons_window()
 {
-	ImVec2 mainWindowSize = ImGui::GetWindowSize();
-	ImVec2 mainWindowPos = ImGui::GetWindowPos();
-	
-	ImVec2 buttonsWindowSize = ImVec2(mainWindowSize.x * 0.15, mainWindowSize.y * 0.1);
+	// Render a visible, in-frame footer with compact guidance on the left
+	// and action controls anchored on the right.
+	const float footerHeight = GetModSettingsFooterHeight();
+	const float footerPadX = 10.0f;
+	const float footerPadY = 8.0f;
 
-	ImGui::SetNextWindowPos(ImVec2(mainWindowPos.x + mainWindowSize.x, mainWindowPos.y + mainWindowSize.y - buttonsWindowSize.y));
-	ImGui::SetNextWindowSize(buttonsWindowSize);  // Adjust the height as needed
-	ImGui::Begin("Buttons", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-	show_saveButton();
-	ImGui::SameLine();
-	show_cancelButton();
-	if (edit_mode) {
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(footerPadX, footerPadY));
+	ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.20f, 0.20f, 0.20f, 0.98f));
+	ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.75f, 0.75f, 0.75f, 0.65f));
+
+	ImGui::BeginChild(
+		"##modsettings_footer",
+		ImVec2(0, footerHeight),
+		ImGuiChildFlags_Borders | ImGuiChildFlags_NavFlattened,
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+	const ImGuiStyle& style = ImGui::GetStyle();
+	const float spacing = style.ItemSpacing.x;
+
+	auto buttonWidth = [](const char* label) {
+		return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+	};
+	auto checkboxWidth = [](const char* label) {
+		return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(label).x;
+	};
+
+	float controlsWidth = 0.0f;
+	controlsWidth += buttonWidth(TR("modsettings_save", "Save"));
+	controlsWidth += spacing + buttonWidth(TR("modsettings_cancel", "Cancel"));
+	controlsWidth += spacing + checkboxWidth(TR("modsettings_auto_save", "Auto Save"));
+	const float totalWidth = ImGui::GetContentRegionAvail().x;
+	const bool showHints = totalWidth >= controlsWidth + 180.0f + spacing * 2.0f;
+	const bool focusPrimaryAction = request_primary_action_focus;
+	request_primary_action_focus = false;
+
+	if (ImGui::BeginTable(
+			"##modsettings_footer_layout",
+			2,
+			ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings,
+			ImVec2(0.0f, 0.0f))) {
+		ImGui::TableSetupColumn("Hints", ImGuiTableColumnFlags_WidthStretch);
+		ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, controlsWidth);
+		ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetContentRegionAvail().y);
+
+		ImGui::TableSetColumnIndex(0);
+		if (showHints) {
+			ShowModSettingsFooterHints(ImGui::GetContentRegionAvail().x);
+		}
+
+		ImGui::TableSetColumnIndex(1);
+		const float contentHeight = ImGui::GetContentRegionAvail().y;
+		const float verticalOffset = (std::max)(0.0f, (contentHeight - ImGui::GetFrameHeight()) * 0.5f);
+		if (verticalOffset > 0.0f) {
+			ImGui::Dummy(ImVec2(0.0f, verticalOffset));
+		}
+
+		if (focusPrimaryAction) {
+			ImGui::SetKeyboardFocusHere();
+		}
+		show_saveButton();
+		if (focusPrimaryAction) {
+			ImGui::SetItemDefaultFocus();
+		}
 		ImGui::SameLine();
-		show_saveJsonButton();
+		show_cancelButton();
 		ImGui::SameLine();
-		//show_reloadTranslationButton();
+		ImGui::Checkbox(TR("modsettings_auto_save", "Auto Save"), &auto_save_enabled);
+
+		ImGui::EndTable();
 	}
-	ImGui::End();
+
+	ImGui::EndChild();
+	ImGui::PopStyleColor(2);
+	ImGui::PopStyleVar();
 }
 
 
@@ -155,6 +1061,216 @@ void ModSettings::show_entry_edit(entry_base* entry, mod_setting* mod)
 		edited = true;
 	if (ImGui::InputTextWithPaste("Description", entry->desc.def, ImVec2(ImGui::GetCurrentWindow()->Size.x * 0.8, ImGui::GetTextLineHeight() * 3), true, ImGuiInputTextFlags_AutoSelectAll))
 		edited = true;
+
+	if (entry->type == kEntryType_Group) {
+		ImGui::Separator();
+		ImGui::TextUnformatted("Group Layout");
+
+		auto* group = dynamic_cast<entry_group*>(entry);
+		int layoutModeIndex = group->layout_mode == entry_group::LayoutMode::Grid ? 1 : 0;
+		const char* layoutModeLabels[] = { "stack", "grid" };
+		if (ImGui::BeginCombo("Layout Mode", layoutModeLabels[layoutModeIndex])) {
+			for (int i = 0; i < 2; i++) {
+				const bool isSelected = layoutModeIndex == i;
+				if (ImGui::Selectable(layoutModeLabels[i], isSelected)) {
+					layoutModeIndex = i;
+					group->layout_mode = layoutModeIndex == 1 ? entry_group::LayoutMode::Grid : entry_group::LayoutMode::Stack;
+					if (group->layout_mode == entry_group::LayoutMode::Grid && group->layout_columns < 2) {
+						group->layout_columns = 2;
+					}
+					edited = true;
+				}
+				if (isSelected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		if (group->layout_mode == entry_group::LayoutMode::Grid) {
+			int columns = group->layout_columns;
+			if (ImGui::InputInt("Grid Columns", &columns)) {
+				group->layout_columns = (std::clamp)(columns, 2, 10);
+				edited = true;
+			}
+		}
+	}
+
+	ImGui::Separator();
+	ImGui::TextUnformatted("Hint Media");
+	bool hintEnabled = entry->hint.has_value();
+	if (ImGui::Checkbox("Enable Hint", &hintEnabled)) {
+		if (hintEnabled) {
+			entry_base::HintConfig hintConfig;
+			hintConfig.showOn = entry_base::HintConfig::ShowOn::Note;
+			entry->hint = std::move(hintConfig);
+		} else {
+			entry->hint.reset();
+		}
+		edited = true;
+	}
+
+	if (hintEnabled && entry->hint.has_value()) {
+		auto& hint = *entry->hint;
+		const char* showOnLabels[] = { "note", "control", "both" };
+		int showOnIndex = HintShowOnToIndex(hint.showOn);
+		if (ImGui::BeginCombo("Show On", showOnLabels[showOnIndex])) {
+			for (int i = 0; i < 3; i++) {
+				const bool isSelected = showOnIndex == i;
+				if (ImGui::Selectable(showOnLabels[i], isSelected)) {
+					hint.showOn = HintShowOnFromIndex(i);
+					edited = true;
+				}
+				if (isSelected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		bool mediaEnabled = hint.media.has_value();
+		if (ImGui::Checkbox("Enable Hint Media", &mediaEnabled)) {
+			if (mediaEnabled) {
+				entry_base::HintMediaConfig mediaConfig;
+				mediaConfig.type = entry_base::HintMediaConfig::Type::Flipbook;
+				mediaConfig.fps = 8;
+				mediaConfig.maxW = 360;
+				mediaConfig.maxH = 220;
+				mediaConfig.loop = true;
+				mediaConfig.preload = false;
+				hint.media = std::move(mediaConfig);
+			} else {
+				hint.media.reset();
+			}
+			edited = true;
+		}
+
+		if (hint.media.has_value()) {
+			auto& media = *hint.media;
+			const char* mediaTypeLabels[] = { "flipbook", "gif", "webp", "webm" };
+			int mediaTypeIndex = HintMediaTypeToIndex(media.type);
+			if (ImGui::BeginCombo("Media Type", mediaTypeLabels[mediaTypeIndex])) {
+				for (int i = 0; i < 4; i++) {
+					const bool isSelected = mediaTypeIndex == i;
+					if (ImGui::Selectable(mediaTypeLabels[i], isSelected)) {
+						media.type = HintMediaTypeFromIndex(i);
+						edited = true;
+					}
+					if (isSelected) {
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+
+			if (ImGui::InputTextWithPaste("Media Path", media.path)) {
+				SyncHintMediaPathAndCache(media);
+				edited = true;
+			}
+
+			HintPickerState& pickerState = GetHintPickerState();
+			if (ImGui::Button("Pick From Data...")) {
+				if (pickerState.basePath.empty()) {
+					pickerState.basePath = "Data\\SKSE\\Plugins\\dMenu\\hints";
+				}
+				pickerState.filter.clear();
+				pickerState.loaded = false;
+				pickerState.mediaType = media.type;
+				ImGui::OpenPopup("Hint Media Picker");
+			}
+
+			if (ImGui::BeginPopupModal("Hint Media Picker", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+				ImGui::TextUnformatted("Hint media path helper");
+				if (ImGui::InputTextWithPaste("Base Path", pickerState.basePath)) {
+					pickerState.loaded = false;
+				}
+				if (ImGui::InputTextWithPaste("Filter", pickerState.filter)) {
+					// live filter only
+				}
+				if (ImGui::Button("Rescan")) {
+					pickerState.loaded = false;
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Close")) {
+					ImGui::CloseCurrentPopup();
+				}
+
+				if (!pickerState.loaded || pickerState.mediaType != media.type) {
+					pickerState.mediaType = media.type;
+					const std::filesystem::path basePath = ResolvePickerBasePath(pickerState.basePath);
+					pickerState.candidates = BuildHintMediaCandidates(basePath, media.type);
+					pickerState.loaded = true;
+				}
+
+				ImGui::Text("Candidates: %d", static_cast<int>(pickerState.candidates.size()));
+				if (ImGui::BeginChild("##hint_media_candidates", ImVec2(760.f, 260.f), true)) {
+					for (const auto& candidate : pickerState.candidates) {
+						if (!ContainsCaseInsensitive(candidate, pickerState.filter)) {
+							continue;
+						}
+						if (ImGui::Selectable(candidate.c_str(), false)) {
+							media.path = ToDataRelativePathIfPossible(std::filesystem::path(candidate));
+							SyncHintMediaPathAndCache(media);
+							edited = true;
+							ImGui::CloseCurrentPopup();
+							break;
+						}
+					}
+				}
+				ImGui::EndChild();
+				ImGui::EndPopup();
+			}
+
+			if (media.type == entry_base::HintMediaConfig::Type::Flipbook) {
+				int fps = media.fps;
+				if (ImGui::InputInt("FPS", &fps)) {
+					media.fps = (std::clamp)(fps, 1, 120);
+					edited = true;
+				}
+			}
+
+			int maxW = media.maxW;
+			if (ImGui::InputInt("MaxW", &maxW)) {
+				media.maxW = (std::clamp)(maxW, 32, 1024);
+				edited = true;
+			}
+
+			int maxH = media.maxH;
+			if (ImGui::InputInt("MaxH", &maxH)) {
+				media.maxH = (std::clamp)(maxH, 32, 1024);
+				edited = true;
+			}
+
+			if (ImGui::Checkbox("Loop", &media.loop)) {
+				edited = true;
+			}
+			if (ImGui::Checkbox("Preload", &media.preload)) {
+				edited = true;
+			}
+
+			std::string validationMessage;
+			if (media.path.empty()) {
+				validationMessage = "Hint media path is empty.";
+			} else {
+				const std::string ext = ToLowerASCII(std::filesystem::path(media.path).extension().string());
+				if (media.type == entry_base::HintMediaConfig::Type::Gif && ext != ".gif") {
+					validationMessage = "GIF type expects a .gif file path.";
+				} else if (media.type == entry_base::HintMediaConfig::Type::Webp && ext != ".webp") {
+					validationMessage = "WebP type expects a .webp file path.";
+				} else if (media.type == entry_base::HintMediaConfig::Type::Webm && ext != ".webm") {
+					validationMessage = "WebM type expects a .webm file path.";
+				}
+			}
+
+			if (!validationMessage.empty()) {
+				ImGui::TextColored(ImVec4(1.f, 0.4f, 0.4f, 1.f), "%s", validationMessage.c_str());
+			}
+			if (!media.path.empty() && !IsDataRelativePathText(media.path)) {
+				ImGui::TextColored(ImVec4(1.f, 0.8f, 0.35f, 1.f), "%s", "Portable path recommended: Data\\... (auto-normalized when possible)");
+			}
+		}
+	}
+
 	int current_type = entry->type;
 
 	// Show fields specific to the selected setting type
@@ -214,7 +1330,7 @@ void ModSettings::show_entry_edit(entry_base* entry, mod_setting* mod)
 				}
 				for (int i = 0; i < dropdown->options.size(); i++) {
 					ImGui::PushID(i);
-					if (ImGui::InputText("Option", &dropdown->options[i]))
+					if (IMEWidgets::InputText("Option", &dropdown->options[i]))
 						edited = true;
 					ImGui::SameLine();
 					if (ImGui::Button("-")) {
@@ -234,66 +1350,62 @@ void ModSettings::show_entry_edit(entry_base* entry, mod_setting* mod)
 	case kEntryType_Text:
 		{
 			// color palette to set text color
-			ImGui::Text("Text color");
-			if (ImGui::BeginChild("##text_color", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize))
-			{
+			ImGui::Text("%s", TR("modsettings_text_color", "Text color"));
+			if (ImGui::BeginChild("##text_color", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize)) {
 				entry_text* text = dynamic_cast<entry_text*>(entry);
 				float colorArray[4] = { text->_color.x, text->_color.y, text->_color.z, text->_color.w };
 				if (ImGui::ColorEdit4("Color", colorArray)) {
 					text->_color = ImVec4(colorArray[0], colorArray[1], colorArray[2], colorArray[3]);
 					edited = true;
 				}
-				ImGui::EndChild();
 			}
+			ImGui::EndChild();
 			break;
 		}
 	case kEntryType_Color:
 	{
 			// color palette to set text color
-			ImGui::Text("Color");
-			if (ImGui::BeginChild("##color", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize))
-			{
+			ImGui::Text("%s", TR("modsettings_color", "Color"));
+			if (ImGui::BeginChild("##color", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize)) {
 				setting_color* color = dynamic_cast<setting_color*>(entry);
 				float colorArray[4] = { color->default_color.x, color->default_color.y, color->default_color.z, color->default_color.w };
 				if (ImGui::ColorEdit4("Default Color", colorArray)) {
 					color->default_color = ImVec4(colorArray[0], colorArray[1], colorArray[2], colorArray[3]);
 					edited = true;
 				}
-				ImGui::EndChild();
 			}
+			ImGui::EndChild();
 			break;
 	}
 	case kEntryType_Keymap:
 	{
-			// color palette to set text color
-			ImGui::Text("Keymap");
-			if (ImGui::BeginChild("##keymap", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize))
-			{
+			// keymap editor
+			ImGui::Text("%s", TR("modsettings_keymap", "Keymap"));
+			if (ImGui::BeginChild("##keymap", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize)) {
 				setting_keymap* keymap = dynamic_cast<setting_keymap*>(entry);
 				if (ImGui::InputInt("Default Key ID", &(keymap->default_value))) {
 					edited = true;
 				}
-				ImGui::EndChild();
 			}
+			ImGui::EndChild();
 			break;
 	}
 	case kEntryType_Button:
 	{
-			ImGui::Text("Button");
-			if (ImGui::BeginChild("##button", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize))
-			{
+			ImGui::Text("%s", TR("modsettings_button", "Button"));
+			if (ImGui::BeginChild("##button", ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize)) {
 				entry_button* button = dynamic_cast<entry_button*>(entry);
-				if (ImGui::InputText("ID", &(button->id))) {
+				if (IMEWidgets::InputText("ID", &(button->id))) {
 					edited = true;
 				}
-				ImGui::EndChild();
 			}
+			ImGui::EndChild();
 	}
 	default:
 		break;
 	}
 
-	ImGui::Text("Control");
+	ImGui::Text("%s", TR("modsettings_control", "Control"));
 	// choose fail action
 	static const char* failActions[] = { "Disable", "Hide" };
 	if (ImGui::BeginCombo("Fail Action", failActions[(int)entry->control.failAction])) {
@@ -358,24 +1470,23 @@ void ModSettings::show_entry_edit(entry_base* entry, mod_setting* mod)
 
 			ImGui::PopID();
 		}
-
-		ImGui::EndChild();
 	}
+	ImGui::EndChild();
 
 	
 
-	ImGui::Text("Localization");
+	ImGui::Text("%s", TR("modsettings_localization", "Localization"));
 	if (ImGui::BeginChild((std::string(entry->name.def) + "##Localization").c_str(), ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize)) {
 		if (ImGui::InputTextWithPaste("Name", entry->name.key))
 			edited = true;
 		if (ImGui::InputTextWithPaste("Description", entry->desc.key))
 			edited = true;
-		ImGui::EndChild();
 	}
+	ImGui::EndChild();
 
 	if (entry->is_setting()) {
 		setting_base* setting = dynamic_cast<setting_base*>(entry);
-		ImGui::Text("Serialization");
+		ImGui::Text("%s", TR("modsettings_serialization", "Serialization"));
 		if (ImGui::BeginChild((std::string(setting->name.def) + "##serialization").c_str(), ImVec2(0, 100), true, ImGuiWindowFlags_AlwaysAutoResize)) {
 			if (ImGui::InputTextWithPasteRequired("ini ID", setting->ini_id))
 				edited = true;
@@ -399,8 +1510,8 @@ void ModSettings::show_entry_edit(entry_base* entry, mod_setting* mod)
 					}
 				}
 			}
-			ImGui::EndChild();
 		}
+		ImGui::EndChild();
 	}
 	if (edited) {
 		json_dirty_mods.insert(mod);
@@ -412,6 +1523,11 @@ void ModSettings::show_entry_edit(entry_base* entry, mod_setting* mod)
 
 
 void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
+{
+	show_entry_impl(entry, mod, 0.5f);  // Default width fraction for stack layout
+}
+
+void ModSettings::show_entry_impl(entry_base* entry, mod_setting* mod, float widthFrac)
 {
 	ImGui::PushID(entry);
 	bool edited = false;
@@ -432,7 +1548,7 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 		}
 	}
 		
-	float width = ImGui::GetContentRegionAvail().x * 0.5f;
+	float width = ImGui::GetContentRegionAvail().x * widthFrac;
 	switch (entry->type) {
 	case kEntryType_Checkbox:
 		{
@@ -441,17 +1557,14 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 			if (ImGui::Checkbox(checkbox->name.get(), &checkbox->value)) {
 				edited = true;
 			}
-			if (ImGui::IsItemHovered()) {
+			const bool hoveredControl = IsItemHoveredOrFocused();
+			if (hoveredControl) {
 				if (ImGui::IsKeyPressed(ImGuiKey_R)) {
 					edited |= checkbox->reset();
 				}
 			}
 
-			if (!checkbox->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(checkbox->desc.get());
-			}
-
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 		}
 		break;
 
@@ -465,16 +1578,21 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 				edited = true;
 			}
 
-			if (ImGui::IsItemHovered()) {
-				if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_LeftArrow))) {
+			const bool hoveredControl = IsItemHoveredOrFocused();
+			if (hoveredControl) {
+				if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
+				    ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft) ||
+				    ImGui::IsKeyPressed(ImGuiKey_GamepadLStickLeft)) {
 					if (slider->value > slider->min) {
-						slider->value -= slider->step;
+						slider->value = (std::max)(slider->min, slider->value - slider->step);
 						edited = true;
 					}
 				}
-				if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_RightArrow))) {
+				if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
+				    ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight) ||
+				    ImGui::IsKeyPressed(ImGuiKey_GamepadLStickRight)) {
 					if (slider->value < slider->max) {
-						slider->value += slider->step;
+						slider->value = (std::min)(slider->max, slider->value + slider->step);
 						edited = true;
 					}
 				}
@@ -484,11 +1602,7 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 				}
 			}
 
-
-			if (!slider->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(slider->desc.get());
-			}
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 		}
 		break;
 
@@ -497,22 +1611,19 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 			setting_textbox* textbox = dynamic_cast<setting_textbox*>(entry);
 
 			ImGui::SetNextItemWidth(width);
-			if (ImGui::InputText(textbox->name.get(), &textbox->value)) {
+			if (IMEWidgets::InputText(textbox->name.get(), &textbox->value)) {
 				edited = true;
 			}
+			const bool hoveredControl = IsItemHoveredOrFocused();
 
-			if (!textbox->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(textbox->desc.get());
-			}
-
-			if (ImGui::IsItemHovered()) {
+			if (hoveredControl) {
 				if (ImGui::IsKeyPressed(ImGuiKey_R)) {
 					edited |= textbox->reset();
 
 				}
 			}
-			
+
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 		}
 		break;
 
@@ -550,36 +1661,44 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 				ImGui::EndCombo();
 			}
 
-			if (ImGui::IsItemHovered()) {
+			const bool hoveredControl = IsItemHoveredOrFocused();
+			if (hoveredControl) {
 				if (ImGui::IsKeyPressed(ImGuiKey_R)) {
 					edited |= dropdown->reset();
 				}
 			}
 
-			if (!dropdown->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(dropdown->desc.get());
-			}
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 		}
 		break;
 	case kEntryType_Text:
 		{
 			entry_text* t = dynamic_cast<entry_text*>(entry);
 			ImGui::TextColored(t->_color, t->name.get());
+			const bool hoveredControl = IsItemHoveredOrFocused();
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 		}
 		break;
 	case kEntryType_Group:
 		{
 			entry_group* g = dynamic_cast<entry_group*>(entry);
-			ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-			if (ImGui::CollapsingHeader(g->name.get())) {
-				if (ImGui::IsItemHovered() && !g->desc.empty()) {
-					ImGui::SetTooltip(g->desc.get());
+			ImGuiStorage* storage = ImGui::GetStateStorage();
+			const ImGuiID openId = ImGui::GetID("##group_expanded");
+			bool expanded = storage->GetBool(openId, false);
+			if (DrawManualCollapsibleHeader("##group_toggle", g->name.get(), expanded)) {
+				expanded = !expanded;
+				storage->SetBool(openId, expanded);
+			}
+			const bool hoveredControl = IsItemHoveredOrFocused();
+
+			ShowEntryHintTooltip(entry, hoveredControl, false);
+			if (expanded) {
+				// Use grid layout if enabled and not in edit mode
+				if (g->layout_mode == entry_group::LayoutMode::Grid && g->layout_columns > 1 && !edit_mode) {
+					show_entries_grid(g->entries, mod, g->layout_columns);
+				} else {
+					show_entries(g->entries, mod);
 				}
-				ImGui::PopStyleColor();
-				show_entries(g->entries, mod);
-			} else {
-				ImGui::PopStyleColor();
 			}
 		}
 		break;
@@ -587,27 +1706,29 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 		{
 			setting_keymap* k = dynamic_cast<setting_keymap*>(entry);
 			std::string hash = std::to_string((unsigned long long)(void**)k);
+			bool hoveredControl = false;
 			if (ImGui::Button("Remap")) {
 				ImGui::OpenPopup(hash.data());
-				keyMapListening = k;
+				BeginKeyMapCapture(k);
 			}
+			hoveredControl |= IsItemHoveredOrFocused();
 			ImGui::SameLine();
 			if (ImGui::Button("Unmap")) {
 				k->value = 0;
 				edited = true;
 			}
+			hoveredControl |= IsItemHoveredOrFocused();
 			ImGui::SameLine();
 			ImGui::Text("%s:", k->name.get());
+			hoveredControl |= IsItemHoveredOrFocused();
 			ImGui::SameLine();
 			ImGui::Text(setting_keymap::keyid_to_str(k->value));
+			hoveredControl |= IsItemHoveredOrFocused();
 
-			if (!k->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(k->desc.get());
-			}
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 
 			if (ImGui::BeginPopupModal(hash.data())) {
-				ImGui::Text("Enter the key you wish to map");
+				ImGui::Text("%s", TR("modsettings_enter_key", "Enter the key you wish to map"));
 				if (keyMapListening == nullptr) {
 					edited = true;
 					ImGui::CloseCurrentPopup();
@@ -618,23 +1739,133 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 		break;
 	case kEntryType_Color:
 		{
-			setting_color* c = dynamic_cast<setting_color*>(entry);
-			ImGui::SetNextItemWidth(width);
 			setting_color* color = dynamic_cast<setting_color*>(entry);
 			float colorArray[4] = { color->color.x, color->color.y, color->color.z, color->color.w };
-			if (ImGui::ColorEdit4(color->name.get(), colorArray)) {
+
+			const ImGuiColorEditFlags compactFlags =
+				ImGuiColorEditFlags_DisplayRGB |
+				ImGuiColorEditFlags_AlphaBar;
+
+			ImGui::SetNextItemWidth(width);
+			const std::string colorEditLabel = std::string(color->name.get()) + "##color_preview";
+			bool colorChanged = ImGui::ColorEdit4(colorEditLabel.c_str(), colorArray, compactFlags);
+			bool hoveredControl = IsItemHoveredOrFocused();
+			const bool previewFocused = ImGui::IsItemFocused();
+			const bool previewActive = ImGui::IsItemActive();
+
+			ImGuiContext* ctx = ImGui::GetCurrentContext();
+			const bool navFromGamepad =
+				ctx != nullptr &&
+				ctx->NavInputSource == ImGuiInputSource_Gamepad;
+			const bool gamepadEditHeld =
+				ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown) ||
+				ImGui::IsKeyDown(ImGuiKey_Enter);
+			const bool showGamepadPicker =
+				navFromGamepad &&
+				(previewActive || (previewFocused && gamepadEditHeld));
+
+			if (showGamepadPicker) {
+				const float pickerWidth = (std::max)(220.0f, width);
+				ImGui::SetNextItemWidth(pickerWidth);
+				const ImGuiColorEditFlags pickerFlags =
+					ImGuiColorEditFlags_DisplayRGB |
+					ImGuiColorEditFlags_PickerHueBar |
+					ImGuiColorEditFlags_NoSidePreview |
+					ImGuiColorEditFlags_AlphaBar;
+
+				if (ImGui::ColorPicker4("##gamepad_color_picker", colorArray, pickerFlags)) {
+					colorChanged = true;
+				}
+
+				const bool pickerFocused = ImGui::IsItemFocused();
+				const bool pickerActive = ImGui::IsItemActive();
+				const bool pickerHovered = ImGui::IsItemHovered();
+				hoveredControl |= pickerHovered || pickerFocused || pickerActive;
+
+				if (navFromGamepad && (previewFocused || previewActive || pickerFocused || pickerActive)) {
+					auto analog = [](ImGuiKey key) -> float {
+						const ImGuiKeyData* keyData = ImGui::GetKeyData(key);
+						if (keyData != nullptr) {
+							return keyData->AnalogValue;
+						}
+						return ImGui::IsKeyDown(key) ? 1.0f : 0.0f;
+					};
+
+					float hue = 0.0f;
+					float saturation = 0.0f;
+					float value = 0.0f;
+					ImGui::ColorConvertRGBtoHSV(
+						colorArray[0],
+						colorArray[1],
+						colorArray[2],
+						hue,
+						saturation,
+						value);
+
+					const float dt = (std::clamp)(ImGui::GetIO().DeltaTime, 0.0f, 0.050f);
+					const float stickX = analog(ImGuiKey_GamepadLStickRight) - analog(ImGuiKey_GamepadLStickLeft);
+					const float stickY = analog(ImGuiKey_GamepadLStickUp) - analog(ImGuiKey_GamepadLStickDown);
+					const float paletteSpeed = 1.35f;
+
+					const float nextSaturation = (std::clamp)(saturation + stickX * paletteSpeed * dt, 0.0f, 1.0f);
+					const float nextValue = (std::clamp)(value + stickY * paletteSpeed * dt, 0.0f, 1.0f);
+
+					const bool hueUpStep =
+						ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp, true) ||
+						ImGui::IsKeyPressed(ImGuiKey_UpArrow, true);
+					const bool hueDownStep =
+						ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown, true) ||
+						ImGui::IsKeyPressed(ImGuiKey_DownArrow, true);
+
+					float nextHue = hue;
+					if (hueUpStep) {
+						nextHue += 0.020f;
+					}
+					if (hueDownStep) {
+						nextHue -= 0.020f;
+					}
+					if (hueUpStep || hueDownStep) {
+						INFO(
+							"ColorHueStep: entry='{}' up={} down={} hue={:.3f}->{:.3f}",
+							color->name.def,
+							hueUpStep ? 1 : 0,
+							hueDownStep ? 1 : 0,
+							hue,
+							nextHue);
+					}
+					while (nextHue < 0.0f) {
+						nextHue += 1.0f;
+					}
+					while (nextHue > 1.0f) {
+						nextHue -= 1.0f;
+					}
+
+					if (nextHue != hue || nextSaturation != saturation || nextValue != value) {
+						float outR = 0.0f;
+						float outG = 0.0f;
+						float outB = 0.0f;
+						ImGui::ColorConvertHSVtoRGB(nextHue, nextSaturation, nextValue, outR, outG, outB);
+						colorArray[0] = outR;
+						colorArray[1] = outG;
+						colorArray[2] = outB;
+						colorChanged = true;
+					}
+				}
+			}
+
+			if (colorChanged) {
 				color->color = ImVec4(colorArray[0], colorArray[1], colorArray[2], colorArray[3]);
 				edited = true;
 			}
-			if (ImGui::IsItemHovered()) {
-				if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-					edited |= color->reset();
-				}
+
+			if (hoveredControl && ImGui::IsKeyPressed(ImGuiKey_R)) {
+				edited |= color->reset();
 			}
-			if (!c->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(c->desc.get());
+
+			if (hoveredControl && navFromGamepad) {
+				g_hintFocusedEntryThisFrame = entry;
 			}
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 		}
 		break;
 	case kEntryType_Button:
@@ -645,11 +1876,10 @@ void ModSettings::show_entry(entry_base* entry, mod_setting* mod)
 				std::string custom_event_name = "dmenu_buttonCallback";
 				send_mod_callback_event(custom_event_name, b->id);
 			}
-			if (!b->desc.empty()) {
-				ImGui::SameLine();
-				ImGui::HoverNote(b->desc.get());
-			}
+			const bool hoveredControl = IsItemHoveredOrFocused();
+			ShowEntryHintTooltip(entry, hoveredControl, true);
 	}
+	break;
 	default:
 		break;
 	}
@@ -722,7 +1952,7 @@ void ModSettings::show_entries(std::vector<entry_base*>& entries, mod_setting* m
 				ImGui::SetNextWindowPos(mousePos);
 			}
 			if (ImGui::BeginPopupModal("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-				ImGui::Text("Are you sure you want to delete this setting?");
+				ImGui::Text("%s", TR("modsettings_confirm_delete", "Are you sure you want to delete this setting?"));
 				ImGui::Separator();
 
 				if (ImGui::Button("Yes", ImVec2(120, 0))) {
@@ -841,6 +2071,28 @@ void ModSettings::show_entries(std::vector<entry_base*>& entries, mod_setting* m
 	ImGui::PopID();
 }
 
+void ModSettings::show_entries_grid(std::vector<entry_base*>& entries, mod_setting* mod, int columns)
+{
+	ImGui::PushID(&entries);
+
+	ImGuiTableFlags flags =
+		ImGuiTableFlags_SizingStretchSame |
+		ImGuiTableFlags_NoBordersInBody |
+		ImGuiTableFlags_PadOuterX;
+
+	ImGui::Indent();
+	if (ImGui::BeginTable("##grid", columns, flags)) {
+		for (auto* entry : entries) {
+			ImGui::TableNextColumn();
+			show_entry_impl(entry, mod, 1.0f);  // Full width within cell
+		}
+		ImGui::EndTable();
+	}
+	ImGui::Unindent();
+
+	ImGui::PopID();
+}
+
 inline void ModSettings::SendSettingsUpdateEvent(std::string& modName)
 {
 	auto eventSource = SKSE::GetModCallbackEventSource();
@@ -882,9 +2134,43 @@ void ModSettings::submitInput(uint32_t id)
 		return;
 	}
 
-	
+	if (g_keyMapIgnoredInputs.contains(id)) {
+		return;
+	}
+
 	keyMapListening->value = id;
-	keyMapListening = nullptr;
+	ClearKeyMapCapture();
+}
+
+void ModSettings::ToggleHintsVisibility()
+{
+	if (g_hintFocusedEntryLastFrame == nullptr) {
+		g_hintToggledEntry = nullptr;
+		ClearPinnedMediaHint();
+		INFO("HintToggle: no focused entry, cleared toggled hint target");
+		return;
+	}
+
+	if (g_hintToggledEntry == g_hintFocusedEntryLastFrame) {
+		g_hintToggledEntry = nullptr;
+		ClearPinnedMediaHint();
+		INFO("HintToggle: hiding focused entry hint '{}'", g_hintFocusedEntryLastFrame->name.def);
+		return;
+	}
+
+	g_hintToggledEntry = g_hintFocusedEntryLastFrame;
+	ClearPinnedMediaHint();
+	INFO("HintToggle: showing focused entry hint '{}'", g_hintFocusedEntryLastFrame->name.def);
+}
+
+bool ModSettings::AreHintsHidden()
+{
+	return g_hintToggledEntry == nullptr;
+}
+
+void ModSettings::RequestPrimaryActionFocus()
+{
+	request_primary_action_focus = true;
 }
 
 inline std::string ModSettings::get_type_str(entry_type t)
@@ -915,10 +2201,17 @@ inline std::string ModSettings::get_type_str(entry_type t)
 
 void ModSettings::show()
 {
+	RefreshIgnoredKeyMapInputs();
+
+	g_hintFocusedEntryThisFrame = g_hintFocusedEntryLastFrame;
+
 	
 	// a button on the rhs of this same line
 	ImGui::SameLine(ImGui::GetWindowWidth() - 100.0f);  // Move cursor to the right side of the window
-	ImGui::ToggleButton("Edit Config", &edit_mode);
+	ImGui::ToggleButton(TR("modsettings_edit_config", "Edit Config"), &edit_mode);
+	if (ImGui::IsWindowAppearing()) {
+		ImGui::SetItemDefaultFocus();
+	}
 
 		// Set window padding and item spacing
 	const float padding = 8.0f;
@@ -926,20 +2219,53 @@ void ModSettings::show()
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding));
 	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, spacing));
 
+	// Reserve a fixed footer strip so action buttons stay inside the frame
+	// and content cannot draw over them.
+	const float footerHeight = GetModSettingsFooterHeight();
+	ImGui::BeginChild("##modsettings_content", ImVec2(0, -footerHeight), ImGuiChildFlags_NavFlattened);
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
 	for (auto& mod : mods) {
-		if (ImGui::CollapsingHeader(mod->name.c_str())) {
+		ImGui::PushID(mod);
+		ImGuiStorage* storage = ImGui::GetStateStorage();
+		const ImGuiID openId = ImGui::GetID("##mod_expanded");
+		bool expanded = storage->GetBool(openId, false);
+		if (DrawManualCollapsibleHeader("##mod_toggle", mod->name.c_str(), expanded)) {
+			expanded = !expanded;
+			storage->SetBool(openId, expanded);
+		}
+
+		if (expanded) {
 			show_modSetting(mod);
 		}
+		ImGui::PopID();
 	}
 	ImGui::PopStyleColor();
+	ImGui::EndChild();
+
+	if (g_hintFocusedEntryThisFrame != nullptr &&
+	    g_hintFocusedEntryLastFrame != g_hintFocusedEntryThisFrame) {
+		g_hintToggledEntry = nullptr;
+	}
+	if (g_hintFocusedEntryThisFrame != nullptr) {
+		g_hintFocusedEntryLastFrame = g_hintFocusedEntryThisFrame;
+	}
 	
-	ImGui::PopStyleVar();
+	ImGui::PopStyleVar(2);
+
+	// Auto-save pending changes if enabled.
+	if (auto_save_enabled) {
+		if (!ini_dirty_mods.empty()) {
+			FlushIniDirtyMods();
+		}
+		if (!json_dirty_mods.empty()) {
+			FlushJsonDirtyMods();
+		}
+	}
 
 	show_buttons_window();
 }
 
-static const std::string SETTINGS_DIR = "Data\\SKSE\\Plugins\\\dmenu\\customSettings";
+static const std::string SETTINGS_DIR = "Data\\SKSE\\Plugins\\dmenu\\customSettings";
 void ModSettings::init()
 {
 	// Load all mods from the "Mods" directory
@@ -1045,6 +2371,17 @@ ModSettings::entry_group* ModSettings::load_json_group(nlohmann::json& group_jso
 			group->entries.push_back(entry);
 		}
 	}
+
+	// Parse optional layout field for grid rendering
+	if (group_json.contains("layout")) {
+		const auto& layout = group_json["layout"];
+		const std::string mode = layout.value("mode", "stack");
+		if (mode == "grid") {
+			group->layout_mode = entry_group::LayoutMode::Grid;
+			group->layout_columns = (std::max)(1, layout.value("columns", 2));
+		}
+	}
+
 	return group;
 }
 
@@ -1074,6 +2411,8 @@ ModSettings::entry_base* ModSettings::load_json_entry(nlohmann::json& entry_json
 			entry->desc.key = entry_json["translation"]["desc"].get<std::string>();
 		}
 	}
+
+	ParseHintConfig(entry_json, entry);
 	entry->control.failAction = entry_base::Control::kFailAction_Disable;
 
 	if (entry_json.contains("control")) {
@@ -1104,6 +2443,8 @@ ModSettings::entry_base* ModSettings::load_json_entry(nlohmann::json& entry_json
 			}
 		}
 	}
+
+	entry->raw_entry_json = entry_json;
 	
 	return entry;
 }
@@ -1128,6 +2469,7 @@ void ModSettings::load_json(std::filesystem::path path)
 	}
 	// Create a mod_setting object to hold the settings for this mod
 	mod_setting* mod = new mod_setting();
+	mod->raw_mod_json = mod_json;
 
 	// name is .json's name
 	mod->name = path.stem().string();
@@ -1176,12 +2518,16 @@ void ModSettings::populate_non_group_json(entry_base* entry, nlohmann::json& jso
 	json["ini"]["id"] = setting->ini_id;
 	if (setting->gameSetting != "") {
 		json["gameSetting"] = dynamic_cast<setting_base*>(entry)->gameSetting;
+	} else if (json.contains("gameSetting")) {
+		json.erase("gameSetting");
 	}
 	if (setting->type == entry_type::kEntryType_Checkbox) {
 		auto cb_setting = dynamic_cast<setting_checkbox*>(entry);
 		json["default"] = cb_setting->default_value;
 		if (cb_setting->control_id != "") {
 			json["control"]["id"] = cb_setting->control_id;
+		} else if (json.contains("control") && json["control"].is_object()) {
+			json["control"].erase("id");
 		}
 	} else if (setting->type == entry_type::kEntryType_Slider) {
 		auto slider_setting = dynamic_cast<setting_slider*>(entry);
@@ -1197,6 +2543,7 @@ void ModSettings::populate_non_group_json(entry_base* entry, nlohmann::json& jso
 	} else if (setting->type == entry_type::kEntryType_Dropdown) {
 		auto dropdown_setting = dynamic_cast<setting_dropdown*>(entry);
 		json["default"] = dropdown_setting->default_value;
+		json["options"] = nlohmann::json::array();
 		for (auto& option : dropdown_setting->options) {
 			json["options"].push_back(option);
 		}
@@ -1215,22 +2562,47 @@ void ModSettings::populate_non_group_json(entry_base* entry, nlohmann::json& jso
 
 void ModSettings::populate_group_json(entry_group* group, nlohmann::json& group_json)
 {
+	group_json["entries"] = nlohmann::json::array();
 	for (auto& entry : group->entries) {
 		nlohmann::json entry_json;
 		populate_entry_json(entry, entry_json);
 		group_json["entries"].push_back(entry_json);
 	}
+
+	if (group->layout_mode == entry_group::LayoutMode::Grid && group->layout_columns > 1) {
+		group_json["layout"]["mode"] = "grid";
+		group_json["layout"]["columns"] = (std::clamp)(group->layout_columns, 2, 10);
+	} else if (group_json.contains("layout")) {
+		group_json.erase("layout");
+	}
 }
 void ModSettings::populate_entry_json(entry_base* entry, nlohmann::json& entry_json)
 {
+	if (entry->raw_entry_json.is_object()) {
+		entry_json = entry->raw_entry_json;
+	}
+	if (!entry_json.is_object()) {
+		entry_json = nlohmann::json::object();
+	}
+
 	// common fields for entry
 	entry_json["text"]["name"] = entry->name.def;
 	entry_json["text"]["desc"] = entry->desc.def;
-	entry_json["translation"]["name"] = entry->name.key;
-	entry_json["translation"]["desc"] = entry->desc.key;
+	if (!entry->name.key.empty() || !entry->desc.key.empty() || entry_json.contains("translation")) {
+		entry_json["translation"]["name"] = entry->name.key;
+		entry_json["translation"]["desc"] = entry->desc.key;
+	}
 	entry_json["type"] = get_type_str(entry->type);
+	PopulateHintJson(entry, entry_json);
+	if (!entry->hint.has_value() && entry_json.contains("hint")) {
+		entry_json.erase("hint");
+	}
 
-	auto control_json = entry_json["control"];
+	nlohmann::json control_json = nlohmann::json::object();
+	if (entry_json.contains("control") && entry_json["control"].is_object()) {
+		control_json = entry_json["control"];
+	}
+	control_json["requirements"] = nlohmann::json::array();
 
 	for (auto& req : entry->control.reqs) {
 		nlohmann::json req_json;
@@ -1268,22 +2640,24 @@ void ModSettings::populate_entry_json(entry_base* entry, nlohmann::json& entry_j
 	} else {
 		populate_non_group_json(entry, entry_json);
 	}
+
+	entry->raw_entry_json = entry_json;
 }
 /* Serialize config to .json*/
 void ModSettings::flush_json(mod_setting* mod)
 {
-	nlohmann::json mod_json;
+	nlohmann::json mod_json = mod->raw_mod_json.is_object() ? mod->raw_mod_json : nlohmann::json::object();
 	mod_json["name"] = mod->name;
 	mod_json["ini"] = mod->ini_path;
 
-	nlohmann::json data_json;
+	nlohmann::json data_json = nlohmann::json::array();
 
 	for (auto& entry : mod->entries) {
-		nlohmann:json entry_json;
+		nlohmann::json entry_json;
 		populate_entry_json(entry, entry_json);
 		data_json.push_back(entry_json);
 	}
-	
+
 	
 	std::ofstream json_file(mod->json_path);
 	if (!json_file.is_open()) {
@@ -1300,6 +2674,8 @@ void ModSettings::flush_json(mod_setting* mod)
 		// Handle error parsing JSON
 		ERROR("Exception dumping {} : {}", mod->json_path, e.what());
 	}
+
+	mod->raw_mod_json = mod_json;
 
 	insert_game_setting(mod);
 	flush_game_setting(mod);
@@ -1432,156 +2808,144 @@ void ModSettings::load_ini(mod_setting* mod)
 /* Flush changes to MOD into its .ini file*/
 void ModSettings::flush_ini(mod_setting* mod)
 {
-	// Create a SimpleIni object to write to the ini file
 	CSimpleIniA ini;
 	ini.SetUnicode();
-	
+
+	const std::string& path = mod->ini_path;
+
+	// 1) Load existing INI to preserve non-JSON keys
+	const SI_Error rc = ini.LoadFile(path.c_str());
+	if (rc != SI_OK) {
+		std::error_code ec;
+		const bool exists = std::filesystem::exists(path, ec) && !ec;
+
+		// If file exists but load failed, back it up and proceed with fresh INI
+		if (exists) {
+			const std::string backup_path = path + ".bak";
+			std::error_code copy_ec;
+			std::filesystem::copy_file(
+				path,
+				backup_path,
+				std::filesystem::copy_options::overwrite_existing,
+				copy_ec
+			);
+
+			if (copy_ec) {
+				ERROR("Failed to create backup of INI {}: {}", backup_path, copy_ec.message());
+			} else {
+				INFO("Created backup of malformed INI: {}", backup_path);
+			}
+		}
+
+		// Keep UI working even if INI is malformed
+		ini.Reset();
+	}
+
+	// 2) Apply JSON-controlled settings only
 	std::vector<ModSettings::setting_base*> settings;
 	get_all_settings(mod, settings);
-	for (auto& setting : settings) {
-		if (setting->ini_id.empty() || setting->ini_section.empty()) {
-			ERROR("Undefined .ini serialization for setting {}; failed to save value.", setting->name.def);
+
+	for (auto* setting : settings) {
+		if (!setting || setting->ini_id.empty() || setting->ini_section.empty()) {
+			ERROR("Undefined .ini serialization for setting {}; failed to save value.",
+				  setting ? setting->name.def : "null");
 			continue;
 		}
-		// Get the value of this setting from the ini file
+
 		std::string value;
-		if (setting->type == kEntryType_Checkbox) {
-			value = dynamic_cast<setting_checkbox*>(setting)->value ? "true" : "false";
-		} else if (setting->type == kEntryType_Slider) {
-			value = std::to_string(dynamic_cast<setting_slider*>(setting)->value);
-		} else if (setting->type == kEntryType_Textbox) {
-			value = dynamic_cast<setting_textbox*>(setting)->value;
-		} else if (setting->type == kEntryType_Dropdown) {
-			value = std::to_string(dynamic_cast<setting_dropdown*>(setting)->value);
-		}
-		else if (setting->type == kEntryType_Color) {
-			// from imvec4 float to imu32
-			auto sc = dynamic_cast<setting_color*>(setting);
-			// Step 1: Extract components
-			uint32_t r = sc->color.x * 255.0f;
-			uint32_t g = sc->color.y * 255.f;
-			uint32_t b = sc->color.z * 255.f;
-			uint32_t a = sc->color.w * 255.f;
-			ImU32 col = IM_COL32(r, g, b, a);
+
+		switch (setting->type) {
+		case kEntryType_Checkbox:
+			value = static_cast<setting_checkbox*>(setting)->value ? "true" : "false";
+			break;
+
+		case kEntryType_Slider:
+			value = std::to_string(static_cast<setting_slider*>(setting)->value);
+			break;
+
+		case kEntryType_Textbox:
+			value = static_cast<setting_textbox*>(setting)->value;
+			break;
+
+		case kEntryType_Dropdown:
+			value = std::to_string(static_cast<setting_dropdown*>(setting)->value);
+			break;
+
+		case kEntryType_Color: {
+			auto* sc = static_cast<setting_color*>(setting);
+
+			auto clamp01 = [](float v) {
+				return (v < 0.0f) ? 0.0f : (v > 1.0f) ? 1.0f : v;
+			};
+
+			const uint32_t r = static_cast<uint32_t>(clamp01(sc->color.x) * 255.0f + 0.5f);
+			const uint32_t g = static_cast<uint32_t>(clamp01(sc->color.y) * 255.0f + 0.5f);
+			const uint32_t b = static_cast<uint32_t>(clamp01(sc->color.z) * 255.0f + 0.5f);
+			const uint32_t a = static_cast<uint32_t>(clamp01(sc->color.w) * 255.0f + 0.5f);
+
+			const ImU32 col = IM_COL32(r, g, b, a);
 			value = std::to_string(col);
-		} else if (setting->type == kEntryType_Keymap) {
-			value = std::to_string(dynamic_cast<setting_keymap*>(setting)->value);
+			break;
 		}
+
+		case kEntryType_Keymap:
+			value = std::to_string(static_cast<setting_keymap*>(setting)->value);
+			break;
+
+		default:
+			continue;
+		}
+
 		ini.SetValue(setting->ini_section.c_str(), setting->ini_id.c_str(), value.c_str());
 	}
 
-	// Save the ini file
-	ini.SaveFile(mod->ini_path.c_str());
+	// 3) Atomic save: temp + replace
+	const std::string temp_path = path + ".tmp." + std::to_string(GetCurrentProcessId());
+
+	// Best-effort cleanup from a prior crash
+	DeleteFileA(temp_path.c_str());
+
+	if (ini.SaveFile(temp_path.c_str()) != SI_OK) {
+		ERROR("Failed to write temp INI file for {}", mod->name);
+		DeleteFileA(temp_path.c_str());
+		return;
+	}
+
+	if (!MoveFileExA(
+			temp_path.c_str(),
+			path.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+
+		ERROR("Failed to replace INI file for {} (error {})", mod->name, GetLastError());
+		DeleteFileA(temp_path.c_str());
+	}
 }
 
 
 
 
-/* Flush changes to MOD's settings to game settings.*/
+
+/* Flush changes to MOD's settings to game settings.
+ * NOTE: In this build, direct writes to RE::Setting are disabled because
+ * the underlying API changed in newer CommonLibSSE-NG versions.
+ * Settings are still persisted via INI/JSON; this function is a no-op.
+ */
 void ModSettings::flush_game_setting(mod_setting* mod)
 {
-	std::vector<ModSettings::setting_base*> settings;
-	get_all_settings(mod, settings);
-	auto gsc = RE::GameSettingCollection::GetSingleton();
-	if (!gsc) {
-		INFO("Game setting collection not found when trying to save game setting.");
-		return;
-	}
-	for (auto& setting : settings) {
-		if (setting->gameSetting.empty()) {
-			continue;
-		}
-		RE::Setting* s = gsc->GetSetting(setting->gameSetting.c_str());
-		if (!s) {
-			INFO("Error: Game setting not found when trying to save game setting {} for setting {}", setting->gameSetting, setting->name.def);
-			return;
-		}
-		if (setting->type == kEntryType_Checkbox) {
-			s->SetBool(dynamic_cast<setting_checkbox*>(setting)->value);
-		} else if (setting->type == kEntryType_Slider) {
-			float val = dynamic_cast<setting_slider*>(setting)->value;
-			switch (s->GetType()) {
-			case RE::Setting::Type::kUnsignedInteger:
-				s->SetUnsignedInteger((uint32_t)val);
-				break;
-			case RE::Setting::Type::kInteger:
-				s->SetInteger(static_cast<std::int32_t>(val));
-				break;
-			case RE::Setting::Type::kFloat:
-				s->SetFloat(val);
-				break;
-			default:
-				ERROR("Game setting variable for slider has bad type prefix. Prefix it with f(float), i(integer), or u(unsigned integer) to specify the game setting type.");
-				break;
-			}
-		} else if (setting->type == kEntryType_Textbox) {
-			s->SetString(dynamic_cast<setting_textbox*>(setting)->value.c_str());
-		} else if (setting->type == kEntryType_Dropdown) {
-			//s->SetUnsignedInteger(dynamic_cast<setting_dropdown*>(setting_ptr)->value);
-			s->SetInteger(dynamic_cast<setting_dropdown*>(setting)->value);
-		} else if (setting->type == kEntryType_Keymap) {
-			s->SetInteger(dynamic_cast<setting_keymap*>(setting)->value);
-		} else if (setting->type == kEntryType_Color) {
-			setting_color* sc = dynamic_cast<setting_color*>(setting);
-			uint32_t r = sc->color.x * 255.0f;
-			uint32_t g = sc->color.y * 255.f;
-			uint32_t b = sc->color.z * 255.f;
-			uint32_t a = sc->color.w * 255.f;
-			ImU32 col = IM_COL32(r, g, b, a);
-			s->SetUnsignedInteger(col);
-		}
-	}
+	(void)mod;
 }
 
-void ModSettings::insert_game_setting(mod_setting* mod) 
+void ModSettings::insert_game_setting(mod_setting* mod)
 {
-	std::vector<ModSettings::entry_base*> entries;
-	get_all_entries(mod, entries); // must get all entries to inject settings for the entry's control requirements
-	auto gsc = RE::GameSettingCollection::GetSingleton();
-	if (!gsc) {
-		INFO("Game setting collection not found when trying to insert game setting.");
-		return;
-	}
-	for (auto& entry : entries) {
-		if (entry->is_setting()) {
-			auto es = dynamic_cast<ModSettings::setting_base*>(entry);
-			// insert setting setting
-			if (!es->gameSetting.empty()) {                     // gamesetting mapping
-				if (gsc->GetSetting(es->gameSetting.c_str())) {  // setting already exists
-					return;
-				}
-				RE::Setting* s = new RE::Setting(es->gameSetting.c_str());
-				gsc->InsertSetting(s);
-				if (!gsc->GetSetting(es->gameSetting.c_str())) {
-					INFO("ERROR: Failed to insert game setting.");
-				}
-			}
-		}
-		
-		// inject setting for setting's req
-		for (auto req : entry->control.reqs) {
-			if (req.type == entry_base::Control::Req::kReqType_GameSetting) {
-				if (!gsc->GetSetting(req.id.c_str())) {
-					RE::Setting* s = new RE::Setting(req.id.c_str());
-					gsc->InsertSetting(s);
-				}
-			}
-		}
-	}
+	(void)mod;
 }
 
 void ModSettings::save_all_game_setting()
 {
-	for (auto mod : mods) {
-		flush_game_setting(mod);
-	}
 }
 
 void ModSettings::insert_all_game_setting()
 {
-	for (auto mod : mods) {
-		insert_game_setting(mod);
-	}
 }
 //
 //bool ModSettings::API_RegisterForSettingUpdate(std::string a_mod, std::function<void()> a_callback)
@@ -1623,9 +2987,9 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 {
 	switch (key_id) {
 	case 0: 
-		return "Unmapped";
+		return TR("key_unmapped", "Unmapped");
 	case 1:
-		return "Escape";
+		return TR("key_escape", "Escape");
 	case 2:
 		return "1";
 	case 3:
@@ -1647,13 +3011,13 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 	case 11:
 		return "0";
 	case 12:
-		return "Minus";
+		return TR("key_minus", "Minus");
 	case 13:
-		return "Equals";
+		return TR("key_equals", "Equals");
 	case 14:
-		return "Backspace";
+		return TR("key_backspace", "Backspace");
 	case 15:
-		return "Tab";
+		return TR("key_tab", "Tab");
 	case 16:
 		return "Q";
 	case 17:
@@ -1675,13 +3039,13 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 	case 25:
 		return "P";
 	case 26:
-		return "Left Bracket";
+		return TR("key_left_bracket", "Left Bracket");
 	case 27:
-		return "Right Bracket";
+		return TR("key_right_bracket", "Right Bracket");
 	case 28:
-		return "Enter";
+		return TR("key_enter", "Enter");
 	case 29:
-		return "Left Control";
+		return TR("key_left_ctrl", "Left Control");
 	case 30:
 		return "A";
 	case 31:
@@ -1701,15 +3065,15 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 	case 38:
 		return "L";
 	case 39:
-		return "Semicolon";
+		return TR("key_semicolon", "Semicolon");
 	case 40:
-		return "Apostrophe";
+		return TR("key_apostrophe", "Apostrophe");
 	case 41:
-		return "~ (Console)";
+		return TR("key_console", "~ (Console)");
 	case 42:
-		return "Left Shift";
+		return TR("key_left_shift", "Left Shift");
 	case 43:
-		return "Back Slash";
+		return TR("key_backslash", "Back Slash");
 	case 44:
 		return "Z";
 	case 45:
@@ -1725,45 +3089,45 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 	case 50:
 		return "M";
 	case 51:
-		return "Comma";
+		return TR("key_comma", "Comma");
 	case 52:
-		return "Period";
+		return TR("key_period", "Period");
 	case 53:
-		return "Forward Slash";
+		return TR("key_forward_slash", "Forward Slash");
 	case 54:
-		return "Right Shift";
+		return TR("key_right_shift", "Right Shift");
 	case 55:
-		return "NUM*";
+		return TR("key_num_mul", "NUM*");
 	case 56:
-		return "Left Alt";
+		return TR("key_left_alt", "Left Alt");
 	case 57:
-		return "Spacebar";
+		return TR("key_spacebar", "Spacebar");
 	case 58:
-		return "Caps Lock";
+		return TR("key_caps_lock", "Caps Lock");
 	case 59:
-		return "F1";
+		return TR("key_f1", "F1");
 	case 60:
-		return "F2";
+		return TR("key_f2", "F2");
 	case 61:
-		return "F3";
+		return TR("key_f3", "F3");
 	case 62:
-		return "F4";
+		return TR("key_f4", "F4");
 	case 63:
-		return "F5";
+		return TR("key_f5", "F5");
 	case 64:
-		return "F6";
+		return TR("key_f6", "F6");
 	case 65:
-		return "F7";
+		return TR("key_f7", "F7");
 	case 66:
-		return "F8";
+		return TR("key_f8", "F8");
 	case 67:
-		return "F9";
+		return TR("key_f9", "F9");
 	case 68:
-		return "F10";
+		return TR("key_f10", "F10");
 	case 69:
-		return "Num Lock";
+		return TR("key_num_lock", "Num Lock");
 	case 70:
-		return "Scroll Lock";
+		return TR("key_scroll_lock", "Scroll Lock");
 	case 71:
 		return "NUM7";
 	case 72:
@@ -1789,83 +3153,83 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 	case 82:
 		return "NUM0";
 	case 83:
-		return "NUM.";
+		return TR("key_num_decimal", "NUM.");
 	case 87:
 		return "F11";
 	case 88:
 		return "F12";
 	case 156:
-		return "NUM Enter";
+		return TR("key_num_enter", "NUM Enter");
 	case 157:
-		return "Right Control";
+		return TR("key_right_ctrl", "Right Control");
 	case 181:
-		return "NUM/";
+		return TR("key_num_div", "NUM/");
 	case 183:
-		return "SysRq / PtrScr";
+		return TR("key_print_screen", "SysRq / PtrScr");
 	case 184:
-		return "Right Alt";
+		return TR("key_right_alt", "Right Alt");
 	case 197:
-		return "Pause";
+		return TR("key_pause", "Pause");
 	case 199:
-		return "Home";
+		return TR("key_home", "Home");
 	case 200:
-		return "Up Arrow";
+		return TR("key_up", "Up Arrow");
 	case 201:
-		return "PgUp";
+		return TR("key_page_up", "PgUp");
 	case 203:
-		return "Left Arrow";
+		return TR("key_left", "Left Arrow");
 	case 205:
-		return "Right Arrow";
+		return TR("key_right", "Right Arrow");
 	case 207:
-		return "End";
+		return TR("key_end", "End");
 	case 208:
-		return "Down Arrow";
+		return TR("key_down", "Down Arrow");
 	case 209:
-		return "PgDown";
+		return TR("key_page_down", "PgDown");
 	case 210:
-		return "Insert";
+		return TR("key_insert", "Insert");
 	case 211:
-		return "Delete";
+		return TR("key_delete", "Delete");
 	case 256:
-		return "Left Mouse Button";
+		return TR("key_mouse_left", "Left Mouse Button");
 	case 257:
-		return "Right Mouse Button";
+		return TR("key_mouse_right", "Right Mouse Button");
 	case 258:
-		return "Middle/Wheel Mouse Button";
+		return TR("key_mouse_middle", "Middle/Wheel Mouse Button");
 	case 259:
-		return "Mouse Button 3";
+		return TR("key_mouse_3", "Mouse Button 3");
 	case 260:
-		return "Mouse Button 4";
+		return TR("key_mouse_4", "Mouse Button 4");
 	case 261:
-		return "Mouse Button 5";
+		return TR("key_mouse_5", "Mouse Button 5");
 	case 262:
-		return "Mouse Button 6";
+		return TR("key_mouse_6", "Mouse Button 6");
 	case 263:
-		return "Mouse Button 7";
+		return TR("key_mouse_7", "Mouse Button 7");
 	case 264:
-		return "Mouse Wheel Up";
+		return TR("key_mouse_wheel_up", "Mouse Wheel Up");
 	case 265:
-		return "Mouse Wheel Down";
+		return TR("key_mouse_wheel_down", "Mouse Wheel Down");
 	case 266:
-		return "DPAD_UP";
+		return TR("key_dpad_up", "DPAD_UP");
 	case 267:
-		return "DPAD_DOWN";
+		return TR("key_dpad_down", "DPAD_DOWN");
 	case 268:
-		return "DPAD_LEFT";
+		return TR("key_dpad_left", "DPAD_LEFT");
 	case 269:
-		return "DPAD_RIGHT";
+		return TR("key_dpad_right", "DPAD_RIGHT");
 	case 270:
-		return "START";
+		return TR("key_start", "START");
 	case 271:
-		return "BACK";
+		return TR("key_back", "BACK");
 	case 272:
-		return "LEFT_THUMB";
+		return TR("key_left_thumb", "LEFT_THUMB");
 	case 273:
-		return "RIGHT_THUMB";
+		return TR("key_right_thumb", "RIGHT_THUMB");
 	case 274:
-		return "LEFT_SHOULDER";
+		return TR("key_left_shoulder", "LEFT_SHOULDER");
 	case 275:
-		return "RIGHT_SHOULDER";
+		return TR("key_right_shoulder", "RIGHT_SHOULDER");
 	case 276:
 		return "A";
 	case 277:
@@ -1875,10 +3239,10 @@ const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 	case 279:
 		return "Y";
 	case 280:
-		return "LT";
+		return TR("key_lt", "LT");
 	case 281:
-		return "RT";
+		return TR("key_rt", "RT");
 	default:
-		return "Unknown Key";
+		return TR("key_unknown", "Unknown Key");
 	}
 }

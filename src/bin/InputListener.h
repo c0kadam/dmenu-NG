@@ -11,4 +11,6 @@ public:
 	}
 
 	void ProcessEvent(RE::InputEvent** a_event);
+
+	static void ApplyBlockedImGuiGamepadKeys();
 };
