@@ -1,44 +1,50 @@
 # dMenu NG
 
-dMenu NG is a C0kadam-maintained distribution of
-[D7ry/dMenu](https://github.com/D7ry/dMenu), an SKSE plugin that provides an
-ImGui-based in-game configuration menu for Skyrim Special Edition and
-Anniversary Edition.
+dMenu NG is an unofficial standalone DLL update for
+[dMenu](https://www.nexusmods.com/skyrimspecialedition/mods/85707). It keeps the
+original mod's asset setup, but modernises the plugin for current Skyrim
+runtimes, improves controller and text-input workflows, and expands what custom
+dMenu pages can do.
 
-The goal of this fork is to keep the original dMenu idea intact while making it
-more comfortable to use in modern modlists: better controller support, cleaner
-text input, richer setting hints, and a small external API for other SKSE
-plugins that need to open or close dMenu without simulating a hotkey.
+This GitHub repo is mainly here for source, API documentation, and reference
+builds. For normal users, the Nexus page is still the main release page:
 
-This is not a rewrite from scratch. The project still follows the original
-dMenu structure: a native SKSE/CommonLibSSE-NG plugin, an ImGui renderer,
-JSON-driven custom setting pages, and runtime files under
-`Data/SKSE/Plugins/dMenu`. The changes are focused on usability,
-compatibility, and packaging.
+https://www.nexusmods.com/skyrimspecialedition/mods/166751
 
-## What Changed From Original dMenu
+## Highlights
 
-- Gamepad and keyboard navigation were expanded so dMenu can be used more
-  comfortably without a mouse.
-- Keyboard/mouse and gamepad toggle bindings are split, while the legacy
-  `key_toggle_dmenu` setting is still written for compatibility.
-- A controller-friendly on-screen keyboard was added for text and numeric
-  input.
-- IME support was added for East Asian text input, including composition and
-  candidate handling.
-- Hint media support was added for richer setting descriptions, including
-  flipbook BMP frames, GIF/WebP-style assets, and WebM previews.
-- A local translation file is supported at
-  `Data/SKSE/Plugins/dMenu/translations.txt`, with SKSE translation fallback.
-- A versioned external dMenu control API was added for SKSE plugins.
-- Build and packaging files were cleaned up so the repository can be shared and
-  built without local machine state.
-- A ready-built `dmenu.dll` is included in the `Data/` tree for convenience.
+- CommonLibSSE-NG port for modern SE/AE runtimes.
+- Crash and safety fixes around AIM spawning, settings handling, and newer game
+  versions.
+- Gamepad navigation, separate gamepad toggle/modifier bindings, and a gamepad
+  hint toggle.
+- Native IME input for Chinese, Japanese, and Korean text fields.
+- Built-in on-screen keyboard for controller-driven text entry.
+- Localisation through `Data/SKSE/Plugins/dMenu/translations.txt`.
+- Better glyph coverage and custom font support.
+- Grid layout support for custom mod settings pages.
+- Safer INI saving that edits existing files instead of rebuilding them from
+  scratch.
+- Animated hint media for custom settings: flipbook, GIF, WebP, and WebM
+  previews.
+- External API for other SKSE plugins that need to open or close dMenu cleanly.
 
-## Runtime Layout
+## Important Note
 
-The repository includes the runtime files that are meant to ship with the
-plugin:
+This is a standalone DLL update. It replaces the plugin file, but the original
+dMenu mod is still required for its assets and base content.
+
+For localisation support, make sure the included `translations.txt` file is
+present in:
+
+```text
+Data/SKSE/Plugins/dMenu/translations.txt
+```
+
+## Installation Layout
+
+Install the original dMenu first, then let dMenu NG overwrite the plugin files.
+The final layout should include:
 
 ```text
 Data/SKSE/Plugins/dmenu.dll
@@ -49,22 +55,21 @@ Data/SKSE/Plugins/dMenu/docs/...
 Data/SKSE/Plugins/dMenu/hints/...
 ```
 
-Install or package the `Data/` directory as-is. The source tree does not include
-local build directories, user CMake presets, logs, PDBs, archives, or editor
-backup files.
+Keep dMenu NG below the original dMenu mod in your mod manager so this DLL takes
+priority.
 
-## External API
+## External API For Mod Authors
 
-dMenu NG exposes a small versioned API for other SKSE plugins that need to
-open, close, toggle, or query dMenu without simulating the configured hotkey.
+dMenu NG includes a small versioned API for SKSE plugins that need to open,
+close, toggle, or check dMenu without simulating the configured hotkey.
 
-The public ABI header is:
+Public header:
 
 ```text
 src/include/dmenu_api.h
 ```
 
-Available exported functions include:
+Main exported functions:
 
 ```text
 dMenu_OpenMenu()
@@ -72,28 +77,11 @@ dMenu_CloseMenu()
 dMenu_ToggleMenu()
 dMenu_IsMenuOpen()
 dMenu_IsReady()
-dMenu_GetApiVersion()
 dMenu_GetInterface(uint32_t requestedVersion)
 ```
 
-The preferred integration path is SKSE messaging: listen for sender `dmenu` and
-message type `dmenu_api::kMessageInterface`. Direct DLL export lookup is also
-supported as a fallback.
-
-See [README_dmenu_api.md](README_dmenu_api.md) for integration examples.
-
-## Hint Media
-
-Custom setting entries can show richer help than plain text. Hint media is
-configured through JSON entries and runtime settings in:
-
-```text
-Data/SKSE/Plugins/dMenu/hint_media.ini
-```
-
-The included examples show the intended layout for flipbook frames and WebM
-previews. Media loading is cached and budgeted so the feature can stay practical
-inside larger modlists.
+See [README_dmenu_api.md](README_dmenu_api.md) for the SKSE messaging and export
+lookup examples.
 
 ## Requirements
 
@@ -138,25 +126,24 @@ $env:CompiledPluginsPath = "C:\Path\To\Your\Mod"
 cmake --preset vs2022-windows -DCOPY_OUTPUT=ON
 ```
 
-## Repository Notes
+## Credits / Permissions
 
-The repository keeps the upstream project as `upstream` and uses this
-distribution as its own `origin`. Generated build output is intentionally not
-tracked, except for the packaged runtime DLL under `Data/SKSE/Plugins`.
+dMenu NG is a modified derivative of the original dMenu mod by dTry/D7ry.
 
-The bundled runtime assets are small examples and support files for the shipped
-configuration pages. Larger mod-specific media packs should generally live in
-their own distribution packages instead of being committed here.
+- dMenu by dTry/D7ry
+- GitHub: https://github.com/D7ry/dMenu
+- Licensed under the MIT License
 
-## License and Attribution
+This project is not affiliated with or endorsed by dTry/D7ry. All original
+credits remain with the original author and contributors.
 
-This project is derived from [D7ry/dMenu](https://github.com/D7ry/dMenu),
-which is distributed under the MIT License.
+Thanks to dTry for creating the original mod and open-sourcing the code, and to
+the authors and maintainers of CommonLibSSE-NG, Dear ImGui, SimpleIni, spdlog,
+xbyak, nlohmann/json, rapidcsv, rsm-binary-io, fast-cpp-csv-parser, and the
+other libraries used by the project.
 
-This C0kadam-maintained distribution remains MIT licensed. See
-[LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for upstream attribution,
-modification notices, and third-party source notices.
+Thanks to [Risasre22](https://github.com/Risasre22) for the external API
+integration request and compatibility feedback.
 
-External API integration feedback and validation support:
-
-- [Risasre22](https://github.com/Risasre22)
+See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for license and attribution
+details.
