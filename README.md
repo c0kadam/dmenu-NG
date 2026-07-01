@@ -1,7 +1,7 @@
 # dMenu NG
 
 dMenu NG is an unofficial standalone DLL update for
-[dMenu](https://www.nexusmods.com/skyrimspecialedition/mods/85707). It keeps the
+[dMenu](https://github.com/D7ry/dMenu). It keeps the
 original mod's asset setup, but modernises the plugin for current Skyrim
 runtimes, improves controller and text-input workflows, and expands what custom
 dMenu pages can do.
