@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="[assets/logo.png](https://www.nexusmods.com/skyrimspecialedition/mods/166751#)" alt="dMenu NG" width="220">
+  <img src="https://staticdelivery.nexusmods.com/mods/1704/images/166751/166751-1766729765-1623383754.png" alt="dMenu NG" width="220">
 </p>
 
 # dMenu NG
