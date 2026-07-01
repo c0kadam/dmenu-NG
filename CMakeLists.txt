@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(
 	dmenu
-	VERSION 1.0.0
+	VERSION 1.3.0
 	LANGUAGES CXX
 )
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,11 +18,17 @@ macro(set_from_environment VARIABLE)
 endmacro()
 
 set_from_environment(CompiledPluginsPath)
-if(NOT DEFINED CompiledPluginsPath)
-	message(FATAL_ERROR "CompiledPluginsPath is not set")
+
+if(DEFINED CompiledPluginsPath)
+	set(DEFAULT_COPY_OUTPUT ON)
+else()
+	set(DEFAULT_COPY_OUTPUT OFF)
 endif()
 
-option(COPY_OUTPUT "Copy the output of build operations to the game directory" ON)
+option(COPY_OUTPUT "Copy the output of build operations to the game directory" ${DEFAULT_COPY_OUTPUT})
+if(COPY_OUTPUT AND NOT DEFINED CompiledPluginsPath)
+	message(FATAL_ERROR "CompiledPluginsPath is required when COPY_OUTPUT is ON")
+endif()
 option(ENABLE_SKYRIM_SE "Enable support for Skyrim SE in the dynamic runtime feature." ON)
 option(ENABLE_SKYRIM_AE "Enable support for Skyrim AE in the dynamic runtime feature." ON)
 option(ENABLE_SKYRIM_VR "Enable support for Skyrim VR in the dynamic runtime feature." OFF)

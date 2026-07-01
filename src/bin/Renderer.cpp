@@ -5,13 +5,18 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
+#include <array>
 #include <dxgi.h>
 #include "imgui_internal.h"
 
 #include "dMenu.h"
 
 #include "Utils.h"
+#include "HintMedia.h"
+#include "ScreenKeyboardBridge.h"
 #include "menus/Settings.h"
+#include "InputListener.h"
+#include "ime/IMEManager.h"
 
 #include "menus/Translator.h"
 // stole this from MaxSu's detection meter
@@ -29,11 +34,40 @@ namespace stl
 	}
 }
 
+namespace
+{
+	std::atomic<bool> g_applyMenuStateToBackends{ true };
+
+	void RequestMenuStateBackendApply()
+	{
+		g_applyMenuStateToBackends.store(true, std::memory_order_release);
+	}
+
+	void ApplyMenuStateToBackends()
+	{
+		if (!Renderer::IsReady() || !ImGui::GetCurrentContext()) {
+			return;
+		}
+		if (!g_applyMenuStateToBackends.exchange(false, std::memory_order_acq_rel)) {
+			return;
+		}
+
+		const bool enabled = Renderer::IsEnabled();
+		IME::Manager::Get().SetMenuEnabled(enabled);
+		ImGui::GetIO().MouseDrawCursor = enabled;
+	}
+}
+
 
 LRESULT Renderer::WndProcHook::thunk(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	auto& io = ImGui::GetIO();
-	if (uMsg == WM_KILLFOCUS) {
+	LRESULT imeResult = 0;
+	if (IME::Manager::Get().HandleWndProc(hWnd, uMsg, wParam, lParam, imeResult)) {
+		return imeResult;
+	}
+
+	if (uMsg == WM_KILLFOCUS || (uMsg == WM_ACTIVATEAPP && !wParam)) {
 		io.ClearInputCharacters();
 		io.ClearInputKeys();
 	}
@@ -95,34 +129,39 @@ void Renderer::D3DInitHook::thunk()
 	func();
 
 	INFO("D3DInit Hooked!");
-	auto render_manager = RE::BSRenderManager::GetSingleton();
-	if (!render_manager) {
-		ERROR("Cannot find render manager. Initialization failed!");
+
+	// Updated for newer CommonLibSSE-NG: use BSGraphics::Renderer instead of BSRenderManager.
+	auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
+	if (!renderer) {
+		ERROR("Cannot find BSGraphics::Renderer. Initialization failed!");
 		return;
 	}
 
-	auto render_data = render_manager->GetRuntimeData();
+	auto* render_data = RE::BSGraphics::Renderer::GetRendererData();
+	if (!render_data) {
+		ERROR("Cannot get renderer data. Initialization failed!");
+		return;
+	}
 
 	INFO("Getting swapchain...");
-	auto swapchain = render_data.swapChain;
+	auto* window = RE::BSGraphics::Renderer::GetCurrentRenderWindow();
+	auto* swapchain = window ? window->swapChain : nullptr;
 	if (!swapchain) {
 		ERROR("Cannot find swapchain. Initialization failed!");
 		return;
 	}
 
-	INFO("Getting swapchain desc...");
-	DXGI_SWAP_CHAIN_DESC sd{};
-	if (swapchain->GetDesc(std::addressof(sd)) < 0) {
-		ERROR("IDXGISwapChain::GetDesc failed.");
-		return;
-	}
-
-	device = render_data.forwarder;
-	context = render_data.context;
+	device = reinterpret_cast<ID3D11Device*>(render_data->forwarder);
+	context = reinterpret_cast<ID3D11DeviceContext*>(render_data->context);
 
 	INFO("Initializing ImGui...");
 	ImGui::CreateContext();
-	if (!ImGui_ImplWin32_Init(sd.OutputWindow)) {
+	auto& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+	io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+	auto hwnd = reinterpret_cast<HWND>(window->hWnd);
+	if (!ImGui_ImplWin32_Init(hwnd)) {
 		ERROR("ImGui initialization failed (Win32)");
 		return;
 	}
@@ -130,18 +169,19 @@ void Renderer::D3DInitHook::thunk()
 		ERROR("ImGui initialization failed (DX11)");
 		return;
 	}
+	HintMediaManager::Get().OnD3DReady(device, context);
 
 	INFO("ImGui initialized!");
 
-	initialized.store(true);
-
 	WndProcHook::func = reinterpret_cast<WNDPROC>(
 		SetWindowLongPtrA(
-			sd.OutputWindow,
+			hwnd,
 			GWLP_WNDPROC,
 			reinterpret_cast<LONG_PTR>(WndProcHook::thunk)));
 	if (!WndProcHook::func)
 		ERROR("SetWindowLongPtrA failed!");
+
+	IME::Manager::Get().Initialize(hwnd);
 
 // initialize font selection here
 	INFO("Building font atlas...");
@@ -187,6 +227,43 @@ void Renderer::D3DInitHook::thunk()
 				} else if (languageStr == "Cyrillic") {
 					glyphRanges = ImGui::GetIO().Fonts->GetGlyphRangesCyrillic();
 					INFO("Glyph range set to Cyrillic");
+				} else if (languageStr == "Turkish") {
+					// Basic Latin + Latin-1 + Latin Extended-A for Turkish characters
+					static const ImWchar turkishRanges[] = {
+						0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement
+						0x0100, 0x017F, // Latin Extended-A (İ, ı, Ğ, ğ, Ş, ş, etc.)
+						0
+					};
+					glyphRanges = turkishRanges;
+					INFO("Glyph range set to Turkish (Latin Extended-A)");
+				} else if (
+					// Languages that rely on Latin + Latin-1 + Latin Extended-A.
+					languageStr == "LatinExt" ||
+					languageStr == "Polish" ||
+					languageStr == "Czech" ||
+					languageStr == "Slovak" ||
+					languageStr == "Hungarian" ||
+					languageStr == "Romanian" ||
+					languageStr == "Croatian" ||
+					languageStr == "Slovenian" ||
+					languageStr == "Lithuanian" ||
+					languageStr == "Latvian" ||
+					languageStr == "Estonian" ||
+					languageStr == "Albanian" ||
+					languageStr == "Icelandic" ||
+					languageStr == "Bosnian" ||
+					languageStr == "SerbianLatin" ||
+					languageStr == "Norwegian" ||
+					languageStr == "Swedish" ||
+					languageStr == "Danish" ||
+					languageStr == "Finnish") {
+					static const ImWchar latinExtRanges[] = {
+						0x0020, 0x00FF, // Basic Latin + Latin-1 Supplement
+						0x0100, 0x017F, // Latin Extended-A
+						0
+					};
+					glyphRanges = latinExtRanges;
+					INFO("Glyph range set to Latin Extended-A for '{}'", languageStr);
 				}
 			} else {
 				INFO("No font found for language: {}", language);
@@ -203,7 +280,53 @@ void Renderer::D3DInitHook::thunk()
 	if (foundCustomFont) {
 		ImGui::GetIO().Fonts->AddFontFromFileTTF(fontPath.string().c_str(), 32.0f, NULL, glyphRanges);
 	}
+
+	auto mergeFallbackFont = [&](const auto& candidates, const ImWchar* ranges, std::string_view label) {
+		ImFontConfig config{};
+		config.MergeMode = true;
+		config.PixelSnapH = true;
+		for (const auto& candidate : candidates) {
+			if (!std::filesystem::exists(candidate)) {
+				continue;
+			}
+
+			if (ImGui::GetIO().Fonts->AddFontFromFileTTF(candidate, 32.0f, &config, ranges)) {
+				INFO("Merged {} fallback font: {}", label, candidate);
+				return;
+			}
+		}
+
+		INFO("No {} fallback font available for screen keyboard glyphs", label);
+	};
+
+	mergeFallbackFont(
+		std::array{
+			"C:\\Windows\\Fonts\\meiryo.ttc",
+			"C:\\Windows\\Fonts\\msgothic.ttc",
+			"C:\\Windows\\Fonts\\YuGothM.ttc"
+		},
+		ImGui::GetIO().Fonts->GetGlyphRangesJapanese(),
+		"Japanese");
+	mergeFallbackFont(
+		std::array{
+			"C:\\Windows\\Fonts\\malgun.ttf",
+			"C:\\Windows\\Fonts\\gulim.ttc"
+		},
+		ImGui::GetIO().Fonts->GetGlyphRangesKorean(),
+		"Korean");
+	mergeFallbackFont(
+		std::array{
+			"C:\\Windows\\Fonts\\msyh.ttc",
+			"C:\\Windows\\Fonts\\msyh.ttf",
+			"C:\\Windows\\Fonts\\simsun.ttc",
+			"C:\\Windows\\Fonts\\simhei.ttf"
+		},
+		ImGui::GetIO().Fonts->GetGlyphRangesChineseSimplifiedCommon(),
+		"Chinese");
 	SetupImGuiStyle();
+
+	initialized.store(true);
+	ApplyMenuStateToBackends();
 
 }
 
@@ -217,7 +340,10 @@ void Renderer::DXGIPresentHook::thunk(std::uint32_t a_p1)
 	// prologue
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
+	InputListener::ApplyBlockedImGuiGamepadKeys();
 	ImGui::NewFrame();
+	ApplyMenuStateToBackends();
+	HintMediaManager::Get().Tick(ImGui::GetIO().DeltaTime);
 
 	// do stuff
 	Renderer::draw();
@@ -238,10 +364,10 @@ struct ImageSet
 
 void Renderer::MessageCallback(SKSE::MessagingInterface::Message* msg)  //CallBack & LoadTextureFromFile should called after resource loaded.
 {
-	if (msg->type == SKSE::MessagingInterface::kDataLoaded && D3DInitHook::initialized) {
+	if (msg->type == SKSE::MessagingInterface::kDataLoaded && D3DInitHook::initialized.load()) {
 		// Read Texture only after game engine finished load all it renderer resource.
 		auto& io = ImGui::GetIO();
-		io.MouseDrawCursor = true;
+		io.MouseDrawCursor = IsEnabled();
 		io.WantSetMousePos = true;
 	}
 }
@@ -267,8 +393,28 @@ bool Renderer::Install()
 
 void Renderer::flip() 
 {
-	enable = !enable;
-	ImGui::GetIO().MouseDrawCursor = enable;
+	Toggle();
+}
+
+void Renderer::SetEnabled(bool a_enabled)
+{
+	enable.store(a_enabled);
+	RequestMenuStateBackendApply();
+}
+
+void Renderer::Open()
+{
+	SetEnabled(true);
+}
+
+void Renderer::Close()
+{
+	SetEnabled(false);
+}
+
+void Renderer::Toggle()
+{
+	SetEnabled(!IsEnabled());
 }
 
 
@@ -285,6 +431,7 @@ float Renderer::GetResolutionScaleHeight()
 
 void Renderer::draw()
 {
+	const bool menuEnabled = IsEnabled();
 	//static constexpr ImGuiWindowFlags windowFlag = ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration;
 
 	
@@ -297,8 +444,8 @@ void Renderer::draw()
 	//ImGui::Text("sizeX: %f, sizeYL %f", screenSizeX, screenSizeY);
 
 
-
-	if (enable) {
+	IME::Manager::Get().BeginFrame(menuEnabled);
+	if (menuEnabled) {
 		if (!DMenu::initialized) {
 			ImVec2 screenSize = ImGui::GetMainViewport()->Size;
 			float screenSizeX = screenSize.x;
@@ -307,6 +454,8 @@ void Renderer::draw()
 		}
 
 		DMenu::draw();
+		ScreenKeyboardBridge::GetSingleton().Draw();
 	}
+	IME::Manager::Get().EndFrame();
 
 }

@@ -1,0 +1,101 @@
+{
+  "name": "Hint Media Example",
+  "ini": "Data\\SKSE\\Plugins\\dmenu\\customSettings\\ini\\HintMediaExample.ini",
+  "data": [
+    {
+      "type": "group",
+      "text": {
+        "name": "Hint Media Examples",
+        "desc": "Examples for desc-only, flipbook, GIF and WebM tooltip media."
+      },
+      "entries": [
+        {
+          "type": "checkbox",
+          "default": true,
+          "ini": {
+            "section": "HintExample",
+            "id": "descOnly"
+          },
+          "text": {
+            "name": "Desc Only",
+            "desc": "This is the classic text-only tooltip. Percent test: 100% safe."
+          }
+        },
+        {
+          "type": "checkbox",
+          "default": true,
+          "ini": {
+            "section": "HintExample",
+            "id": "flipbookDemo"
+          },
+          "text": {
+            "name": "Flipbook Demo",
+            "desc": "Hover the control itself (showOn=control) to play a 3-frame flipbook."
+          },
+          "hint": {
+            "showOn": "control",
+            "media": {
+              "type": "flipbook",
+              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\ExampleFlipbook",
+              "fps": 8,
+              "maxW": 320,
+              "maxH": 180,
+              "loop": true,
+              "preload": true,
+              "cacheKey": "hint.flipbook.example"
+            }
+          }
+        },
+        {
+          "type": "checkbox",
+          "default": true,
+          "ini": {
+            "section": "HintExample",
+            "id": "gifDemo"
+          },
+          "text": {
+            "name": "GIF Demo",
+            "desc": "Hover the (?) note icon (showOn=note) to play GIF."
+          },
+          "hint": {
+            "showOn": "note",
+            "media": {
+              "type": "gif",
+              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\FavWheel\\frames\\sampleHint2.gif",
+              "maxW": 360,
+              "maxH": 220,
+              "loop": true,
+              "preload": false,
+              "cacheKey": "hint.gif.example"
+            }
+          }
+        },
+        {
+          "type": "checkbox",
+          "default": true,
+          "ini": {
+            "section": "HintExample",
+            "id": "webmDemo"
+          },
+          "text": {
+            "name": "WebM Demo",
+            "desc": "Hover either the control or (?) note (showOn=both) to play WebM."
+          },
+          "hint": {
+            "showOn": "both",
+            "media": {
+              "type": "webm",
+              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\FavWheel\\frames\\favwheel_1.webm",
+              "maxW": 360,
+              "maxH": 220,
+              "loop": true,
+              "preload": false,
+              "cacheKey": "hint.webm.example"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+

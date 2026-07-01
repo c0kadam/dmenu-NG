@@ -1,5 +1,8 @@
+#pragma once
+
 #include "PCH.h"
 #include <unordered_set>
+#include <optional>
 #include "Translator.h"
 #include "imgui.h"
 #include "nlohmann/json.hpp"
@@ -17,6 +20,9 @@ class ModSettings
 public:
 	static inline setting_keymap* keyMapListening = nullptr;
 	static void submitInput(uint32_t id);
+	static void ToggleHintsVisibility();
+	static bool AreHintsHidden();
+	static void RequestPrimaryActionFocus();
 	
 	enum entry_type
 	{
@@ -38,6 +44,40 @@ public:
 	{
 		
 	public:
+		struct HintMediaConfig
+		{
+			enum class Type
+			{
+				Flipbook,
+				Gif,
+				Webp,
+				Webm
+			};
+
+			Type type = Type::Flipbook;
+			std::string path;
+			std::string resolved_path;
+			std::string cacheKey;
+			int fps = 24;
+			int maxW = 420;
+			int maxH = 240;
+			bool loop = true;
+			bool preload = false;
+		};
+
+		struct HintConfig
+		{
+			enum class ShowOn
+			{
+				Note,
+				Control,
+				Both
+			};
+
+			ShowOn showOn = ShowOn::Note;
+			std::optional<HintMediaConfig> media;
+		};
+
 		class Control
 		{
 		public:
@@ -72,7 +112,9 @@ public:
 		entry_type type;
 		Translatable name;
 		Translatable desc;
+		std::optional<HintConfig> hint;
 		Control control;
+		nlohmann::json raw_entry_json;
 		virtual bool is_setting() const { return false; }
 		virtual ~entry_base() = default;
 		virtual bool is_group() const { return false; }
@@ -97,7 +139,12 @@ public:
 	{
 	public:
 		std::vector<entry_base*> entries;
-		
+
+		// Layout mode for child entries
+		enum class LayoutMode { Stack, Grid };
+		LayoutMode layout_mode = LayoutMode::Stack;
+		int layout_columns = 1;
+
 		entry_group()
 		{
 			type = kEntryType_Group;
@@ -268,6 +315,7 @@ public:
 		std::vector<entry_base*> entries;
 		std::string ini_path;
 		std::string json_path;
+		nlohmann::json raw_mod_json;
 
 		std::vector<std::function<void()>> callbacks;
 	};
@@ -277,6 +325,10 @@ public:
 	
 	static inline std::unordered_set<mod_setting*> json_dirty_mods;  // mods whose changes need to be flushed to .json file. i.e. author has changed its setting
 	static inline std::unordered_set<mod_setting*> ini_dirty_mods;   // mods whose changes need to be flushed to .ini or gamesetting. i.e.  user has changed its setting
+
+	// When enabled, changes are automatically flushed without pressing Save.
+	static inline bool auto_save_enabled = false;
+	static inline bool request_primary_action_focus = false;
 
 public:
 
@@ -311,6 +363,10 @@ public:
 
 	static void insert_game_setting(mod_setting* mod);
 
+	// internal helpers for flushing dirty mods
+	static void FlushIniDirtyMods();
+	static void FlushJsonDirtyMods();
+
 public:
 	static void save_all_game_setting();
 	static void insert_all_game_setting();
@@ -332,7 +388,9 @@ private:
 	static void show_modSetting(mod_setting* mod);
 	static void show_entry_edit(entry_base* base, mod_setting* mod);
 	static void show_entry(entry_base* base, mod_setting* mod);
+	static void show_entry_impl(entry_base* base, mod_setting* mod, float widthFrac);
 	static void show_entries(std::vector<entry_base*>& entries, mod_setting* mod);
+	static void show_entries_grid(std::vector<entry_base*>& entries, mod_setting* mod, int columns);
 	
 	static void SendSettingsUpdateEvent(std::string& modName);
 	static void send_mod_callback_event(std::string& mod_name, std::string& str_arg);

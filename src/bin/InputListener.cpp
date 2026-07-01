@@ -3,13 +3,64 @@
 #include <WinUser.h>
 #include <Windows.h>
 #include <dinput.h>
+#include <algorithm>
+#include <array>
 
 #include <imgui.h>
+#include "imgui_internal.h"
 
 #include "Renderer.h"
+#include "ScreenKeyboardBridge.h"
+#include "ime/IMEManager.h"
 
 #include "menus/ModSettings.h"
 #include "menus/Settings.h"
+
+// Cached modifier key states from input events.
+static bool s_mkbModifierDown = false;
+static bool s_gamepadModifierDown = false;
+static bool s_hintBindingHeld = false;
+static bool s_lastMenuEnabled = false;
+static int s_gamepadButtonDebugBudget = 0;
+static int s_gamepadStickDebugBudget = 0;
+static constexpr std::array<ImGuiKey, 16> kTrackedGamepadKeys = {
+	ImGuiKey_GamepadDpadUp,
+	ImGuiKey_GamepadDpadDown,
+	ImGuiKey_GamepadDpadLeft,
+	ImGuiKey_GamepadDpadRight,
+	ImGuiKey_GamepadStart,
+	ImGuiKey_GamepadBack,
+	ImGuiKey_GamepadL3,
+	ImGuiKey_GamepadR3,
+	ImGuiKey_GamepadL1,
+	ImGuiKey_GamepadR1,
+	ImGuiKey_GamepadFaceDown,
+	ImGuiKey_GamepadFaceRight,
+	ImGuiKey_GamepadFaceLeft,
+	ImGuiKey_GamepadFaceUp,
+	ImGuiKey_GamepadL2,
+	ImGuiKey_GamepadR2
+};
+static std::array<bool, kTrackedGamepadKeys.size()> s_blockedGamepadKeys = {};
+static int s_suppressFaceButtonsFrames = 0;
+
+static int GetTrackedGamepadKeyIndex(ImGuiKey key)
+{
+	for (std::size_t i = 0; i < kTrackedGamepadKeys.size(); ++i) {
+		if (kTrackedGamepadKeys[i] == key) {
+			return static_cast<int>(i);
+		}
+	}
+	return -1;
+}
+
+static void SetBlockedGamepadKey(ImGuiKey key, bool blocked)
+{
+	const int index = GetTrackedGamepadKeyIndex(key);
+	if (index >= 0) {
+		s_blockedGamepadKeys[static_cast<std::size_t>(index)] = blocked;
+	}
+}
 
 // enum : uint32_t
 // {
@@ -41,6 +92,19 @@
 // };
 
 #define IM_VK_KEYPAD_ENTER (VK_RETURN + 256)
+static void SubmitImGuiModifierEvents(ImGuiIO& io)
+{
+	const bool ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	const bool shiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+	const bool altDown = (GetKeyState(VK_MENU) & 0x8000) != 0;
+	const bool superDown = ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) != 0;
+
+	io.AddKeyEvent(ImGuiMod_Ctrl, ctrlDown);
+	io.AddKeyEvent(ImGuiMod_Shift, shiftDown);
+	io.AddKeyEvent(ImGuiMod_Alt, altDown);
+	io.AddKeyEvent(ImGuiMod_Super, superDown);
+}
+
 static ImGuiKey ImGui_ImplWin32_VirtualKeyToImGuiKey(WPARAM wParam)
 {
 	switch (wParam) {
@@ -333,16 +397,156 @@ static inline std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key)
 
 	return index != kInvalid ? index + kGamepadOffset : kInvalid;
 }
+
+static ImGuiKey MapGamepadKeyToImGui(RE::BSWin32GamepadDevice::Key a_key)
+{
+	using Key = RE::BSWin32GamepadDevice::Key;
+	switch (a_key) {
+	case Key::kUp:
+		return ImGuiKey_GamepadDpadUp;
+	case Key::kDown:
+		return ImGuiKey_GamepadDpadDown;
+	case Key::kLeft:
+		return ImGuiKey_GamepadDpadLeft;
+	case Key::kRight:
+		return ImGuiKey_GamepadDpadRight;
+	case Key::kStart:
+		return ImGuiKey_GamepadStart;
+	case Key::kBack:
+		return ImGuiKey_GamepadBack;
+	case Key::kLeftThumb:
+		return ImGuiKey_GamepadL3;
+	case Key::kRightThumb:
+		return ImGuiKey_GamepadR3;
+	case Key::kLeftShoulder:
+		return ImGuiKey_GamepadL1;
+	case Key::kRightShoulder:
+		return ImGuiKey_GamepadR1;
+	case Key::kA:
+		return ImGuiKey_GamepadFaceDown;
+	case Key::kB:
+		return ImGuiKey_GamepadFaceRight;
+	case Key::kX:
+		return ImGuiKey_GamepadFaceLeft;
+	case Key::kY:
+		return ImGuiKey_GamepadFaceUp;
+	case Key::kLeftTrigger:
+		return ImGuiKey_GamepadL2;
+	case Key::kRightTrigger:
+		return ImGuiKey_GamepadR2;
+	default:
+		return ImGuiKey_None;
+	}
+}
+
+static ImGuiKey MapBoundInputCodeToImGuiKey(std::uint32_t inputCode)
+{
+	switch (inputCode) {
+	case 266:
+		return ImGuiKey_GamepadDpadUp;
+	case 267:
+		return ImGuiKey_GamepadDpadDown;
+	case 268:
+		return ImGuiKey_GamepadDpadLeft;
+	case 269:
+		return ImGuiKey_GamepadDpadRight;
+	case 270:
+		return ImGuiKey_GamepadStart;
+	case 271:
+		return ImGuiKey_GamepadBack;
+	case 272:
+		return ImGuiKey_GamepadL3;
+	case 273:
+		return ImGuiKey_GamepadR3;
+	case 274:
+		return ImGuiKey_GamepadL1;
+	case 275:
+		return ImGuiKey_GamepadR1;
+	case 276:
+		return ImGuiKey_GamepadFaceDown;
+	case 277:
+		return ImGuiKey_GamepadFaceRight;
+	case 278:
+		return ImGuiKey_GamepadFaceLeft;
+	case 279:
+		return ImGuiKey_GamepadFaceUp;
+	case 280:
+		return ImGuiKey_GamepadL2;
+	case 281:
+		return ImGuiKey_GamepadR2;
+	default:
+		return ImGuiKey_None;
+	}
+}
+
+static void SubmitThumbstickAnalog(ImGuiIO& io, bool isLeftStick, float xValue, float yValue)
+{
+	constexpr float kDeadzone = 0.18f;
+	const float x = (std::clamp)(xValue, -1.0f, 1.0f);
+	const float y = (std::clamp)(yValue, -1.0f, 1.0f);
+
+	const float left = x < -kDeadzone ? -x : 0.0f;
+	const float right = x > kDeadzone ? x : 0.0f;
+	// In Skyrim input, positive Y means up for sticks.
+	const float up = y > kDeadzone ? y : 0.0f;
+	const float down = y < -kDeadzone ? -y : 0.0f;
+
+	const ImGuiKey keyLeft = isLeftStick ? ImGuiKey_GamepadLStickLeft : ImGuiKey_GamepadRStickLeft;
+	const ImGuiKey keyRight = isLeftStick ? ImGuiKey_GamepadLStickRight : ImGuiKey_GamepadRStickRight;
+	const ImGuiKey keyUp = isLeftStick ? ImGuiKey_GamepadLStickUp : ImGuiKey_GamepadRStickUp;
+	const ImGuiKey keyDown = isLeftStick ? ImGuiKey_GamepadLStickDown : ImGuiKey_GamepadRStickDown;
+
+	io.AddKeyAnalogEvent(keyLeft, left > 0.0f, left);
+io.AddKeyAnalogEvent(keyRight, right > 0.0f, right);
+io.AddKeyAnalogEvent(keyUp, up > 0.0f, up);
+io.AddKeyAnalogEvent(keyDown, down > 0.0f, down);
+}
+
 void InputListener::ProcessEvent(RE::InputEvent** a_event)
 {
 	if (!a_event)
 		return;
 
 	auto& io = ImGui::GetIO();
+	const bool menuEnabledAtStart = Renderer::IsEnabled();
+	const bool screenKeyboardPending = ScreenKeyboardBridge::GetSingleton().IsAwaitingResult();
+	if (menuEnabledAtStart && !s_lastMenuEnabled) {
+		s_gamepadButtonDebugBudget = 64;
+		s_gamepadStickDebugBudget = 24;
+		INFO("GamepadDebug: armed while menu open (buttonBudget={}, stickBudget={})", s_gamepadButtonDebugBudget, s_gamepadStickDebugBudget);
+	}
+	s_lastMenuEnabled = menuEnabledAtStart;
 
 	for (auto event = *a_event; event; event = event->next) {
 		if (event->eventType == RE::INPUT_EVENT_TYPE::kChar) {
-			io.AddInputCharacter(static_cast<CharEvent*>(event)->keyCode);
+			const auto codepoint = static_cast<CharEvent*>(event)->keyCode;
+			if (!IME::Manager::Get().ShouldSuppressInputCharacter(codepoint)) {
+				io.AddInputCharacter(codepoint);
+			}
+		} else if (event->eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
+			const auto thumb = static_cast<RE::ThumbstickEvent*>(event);
+			if (!thumb || event->device.get() != RE::INPUT_DEVICE::kGamepad) {
+				continue;
+			}
+
+			const bool isLeftStick = thumb->GetIDCode() == RE::ThumbstickEvent::InputType::kLeftThumbstick;
+			const bool isRightStick = thumb->GetIDCode() == RE::ThumbstickEvent::InputType::kRightThumbstick;
+			if (!isLeftStick && !isRightStick) {
+				continue;
+			}
+
+			if (Renderer::IsEnabled() && s_gamepadStickDebugBudget > 0) {
+				INFO(
+					"GamepadStick: stick={} x={:.3f} y={:.3f} navActive={} navVisible={}",
+					isLeftStick ? "L" : "R",
+					thumb->xValue,
+					thumb->yValue,
+					io.NavActive ? 1 : 0,
+					io.NavVisible ? 1 : 0);
+				s_gamepadStickDebugBudget--;
+			}
+
+			SubmitThumbstickAnalog(io, isLeftStick, thumb->xValue, thumb->yValue);
 		} else if (event->eventType == RE::INPUT_EVENT_TYPE::kButton) {
 			const auto button = static_cast<RE::ButtonEvent*>(event);
 			if (!button || (button->IsPressed() && !button->IsDown()))
@@ -351,7 +555,7 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 			auto scan_code = button->GetIDCode();
 
 			using DeviceType = RE::INPUT_DEVICE;
-			auto input = scan_code;
+			std::uint32_t input = scan_code;
 			switch (button->device.get()) {
 			case DeviceType::kMouse:
 				input += kMouseOffset;
@@ -365,98 +569,123 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 			default:
 				continue;
 			}
-			ModSettings::submitInput(input);
 
-			
-			uint32_t key = MapVirtualKeyEx(scan_code, MAPVK_VSC_TO_VK_EX, GetKeyboardLayout(0));
-			switch (scan_code) {
-			case DIK_LEFTARROW:
-				key = VK_LEFT;
-				break;
-			case DIK_RIGHTARROW:
-				key = VK_RIGHT;
-				break;
-			case DIK_UPARROW:
-				key = VK_UP;
-				break;
-			case DIK_DOWNARROW:
-				key = VK_DOWN;
-				break;
-			case DIK_DELETE:
-				key = VK_DELETE;
-				break;
-			case DIK_END:
-				key = VK_END;
-				break;
-			case DIK_HOME:
-				key = VK_HOME;
-				break;  // pos1
-			case DIK_PRIOR:
-				key = VK_PRIOR;
-				break;  // page up
-			case DIK_NEXT:
-				key = VK_NEXT;
-				break;  // page down
-			case DIK_INSERT:
-				key = VK_INSERT;
-				break;
-			case DIK_NUMPAD0:
-				key = VK_NUMPAD0;
-				break;
-			case DIK_NUMPAD1:
-				key = VK_NUMPAD1;
-				break;
-			case DIK_NUMPAD2:
-				key = VK_NUMPAD2;
-				break;
-			case DIK_NUMPAD3:
-				key = VK_NUMPAD3;
-				break;
-			case DIK_NUMPAD4:
-				key = VK_NUMPAD4;
-				break;
-			case DIK_NUMPAD5:
-				key = VK_NUMPAD5;
-				break;
-			case DIK_NUMPAD6:
-				key = VK_NUMPAD6;
-				break;
-			case DIK_NUMPAD7:
-				key = VK_NUMPAD7;
-				break;
-			case DIK_NUMPAD8:
-				key = VK_NUMPAD8;
-				break;
-			case DIK_NUMPAD9:
-				key = VK_NUMPAD9;
-				break;
-			case DIK_DECIMAL:
-				key = VK_DECIMAL;
-				break;
-			case DIK_NUMPADENTER:
-				key = IM_VK_KEYPAD_ENTER;
-				break;
-			case DIK_RMENU:
-				key = VK_RMENU;
-				break;  // right alt
-			case DIK_RCONTROL:
-				key = VK_RCONTROL;
-				break;  // right control
-			case DIK_LWIN:
-				key = VK_LWIN;
-				break;  // left win
-			case DIK_RWIN:
-				key = VK_RWIN;
-				break;  // right win
-			case DIK_APPS:
-				key = VK_APPS;
-				break;
-			default:
-				break;
+			if (input == kInvalid) {
+				continue;
+			}
+
+			if (button->IsDown()) {
+				ModSettings::submitInput(input);
+			}
+
+			// Submit to Settings key capture (for rebinding toggle/modifier inputs).
+			const bool wasCapturingInput = Settings::IsCapturingInput();
+			if (button->IsDown()) {
+				Settings::submitKeyCapture(input);
+			}
+
+			const bool isCapturingInput = wasCapturingInput;
+
+			if (Settings::key_toggle_modifier_mkb != 0 && input == Settings::key_toggle_modifier_mkb) {
+				s_mkbModifierDown = button->IsPressed();
+			}
+			if (Settings::key_toggle_modifier_gamepad != 0 && input == Settings::key_toggle_modifier_gamepad) {
+				s_gamepadModifierDown = button->IsPressed();
+			}
+
+			const bool isMkbMenuToggleBinding =
+				Settings::key_toggle_dmenu_mkb != 0 &&
+				input == Settings::key_toggle_dmenu_mkb;
+			const bool isGamepadMenuToggleBinding =
+				Settings::key_toggle_dmenu_gamepad != 0 &&
+				input == Settings::key_toggle_dmenu_gamepad;
+			const bool isMenuToggleBinding = isMkbMenuToggleBinding || isGamepadMenuToggleBinding;
+			bool isMenuToggleInput = false;
+			if (!isCapturingInput && !screenKeyboardPending && button->IsDown() && !io.WantTextInput) {
+				if (isMkbMenuToggleBinding) {
+					const bool modifierOk = (Settings::key_toggle_modifier_mkb == 0) || s_mkbModifierDown;
+					isMenuToggleInput = true;
+					if (modifierOk) {
+						Renderer::flip();
+					}
+				} else if (isGamepadMenuToggleBinding) {
+					const bool modifierOk = (Settings::key_toggle_modifier_gamepad == 0) || s_gamepadModifierDown;
+					isMenuToggleInput = true;
+					if (modifierOk) {
+						Renderer::flip();
+					}
+				}
+			}
+
+			bool consumeBoundInput = isMenuToggleBinding;
+			if (screenKeyboardPending && isMenuToggleBinding) {
+				if (button->IsDown()) {
+					ScreenKeyboardBridge::GetSingleton().CancelActiveRequest();
+				}
+				consumeBoundInput = true;
+			}
+			const bool isHintBindingInput =
+				Settings::key_toggle_hints_gamepad != 0 &&
+				input == Settings::key_toggle_hints_gamepad;
+
+			if (isHintBindingInput && !button->IsPressed()) {
+				s_hintBindingHeld = false;
+				INFO("HintKey released (input={}, scan={}, down={})", input, scan_code, button->IsDown() ? 1 : 0);
+			}
+
+			if (!isCapturingInput &&
+			    Renderer::IsEnabled() &&
+			    !isMenuToggleInput &&
+			    isHintBindingInput) {
+				consumeBoundInput = true;
+				if (button->IsPressed() && !s_hintBindingHeld) {
+					ModSettings::ToggleHintsVisibility();
+					s_suppressFaceButtonsFrames = 2;
+					s_hintBindingHeld = true;
+					INFO("HintKey accepted (input={}, scan={}, suppressFrames={})", input, scan_code, s_suppressFaceButtonsFrames);
+				} else if (button->IsPressed() && s_hintBindingHeld) {
+					INFO("HintKey ignored (held) (input={}, scan={})", input, scan_code);
+				}
+			}
+
+			if (!isCapturingInput && button->device.get() == RE::INPUT_DEVICE::kGamepad) {
+				const bool isReservedGamepadBinding =
+					(Settings::key_toggle_dmenu_gamepad != 0 && input == Settings::key_toggle_dmenu_gamepad) ||
+					(Settings::key_toggle_hints_gamepad != 0 && input == Settings::key_toggle_hints_gamepad);
+				if (isReservedGamepadBinding) {
+					const bool blocked = button->IsDown();
+					const ImGuiKey blockedKey = MapGamepadKeyToImGui(static_cast<RE::BSWin32GamepadDevice::Key>(scan_code));
+					if (blockedKey != ImGuiKey_None) {
+						SetBlockedGamepadKey(blockedKey, blocked);
+					}
+				}
+			}
+
+			if (button->device.get() == RE::INPUT_DEVICE::kGamepad && Renderer::IsEnabled() && s_gamepadButtonDebugBudget > 0) {
+				const ImGuiKey mappedKey = MapGamepadKeyToImGui(static_cast<RE::BSWin32GamepadDevice::Key>(scan_code));
+				const char* keyName = mappedKey != ImGuiKey_None ? ImGui::GetKeyName(mappedKey) : "None";
+				INFO(
+					"GamepadButton: scan={} input={} pressed={} down={} value={:.3f} mapped={} consume={} menuToggle={} hintToggle={} navActive={} navVisible={} wantText={}",
+					scan_code,
+					input,
+					button->IsPressed() ? 1 : 0,
+					button->IsDown() ? 1 : 0,
+					button->Value(),
+					keyName,
+					consumeBoundInput ? 1 : 0,
+					isMenuToggleBinding ? 1 : 0,
+					isHintBindingInput ? 1 : 0,
+					io.NavActive ? 1 : 0,
+					io.NavVisible ? 1 : 0,
+					io.WantTextInput ? 1 : 0);
+				s_gamepadButtonDebugBudget--;
 			}
 
 			switch (button->device.get()) {
 			case RE::INPUT_DEVICE::kMouse:
+				if (consumeBoundInput) {
+					break;
+				}
 				if (scan_code > 7)  // middle scroll
 					io.AddMouseWheelEvent(0, button->Value() * (scan_code == 8 ? 1 : -1));
 				else {
@@ -465,22 +694,199 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 					io.AddMouseButtonEvent(scan_code, button->IsPressed());
 				}
 				break;
-			case RE::INPUT_DEVICE::kKeyboard:
+			case RE::INPUT_DEVICE::kKeyboard: {
+				if (consumeBoundInput) {
+					break;
+				}
+				uint32_t key = MapVirtualKeyEx(scan_code, MAPVK_VSC_TO_VK_EX, GetKeyboardLayout(0));
+				switch (scan_code) {
+				case DIK_LEFTARROW:
+					key = VK_LEFT;
+					break;
+				case DIK_RIGHTARROW:
+					key = VK_RIGHT;
+					break;
+				case DIK_UPARROW:
+					key = VK_UP;
+					break;
+				case DIK_DOWNARROW:
+					key = VK_DOWN;
+					break;
+				case DIK_DELETE:
+					key = VK_DELETE;
+					break;
+				case DIK_END:
+					key = VK_END;
+					break;
+				case DIK_HOME:
+					key = VK_HOME;
+					break;  // pos1
+				case DIK_PRIOR:
+					key = VK_PRIOR;
+					break;  // page up
+				case DIK_NEXT:
+					key = VK_NEXT;
+					break;  // page down
+				case DIK_INSERT:
+					key = VK_INSERT;
+					break;
+				case DIK_NUMPAD0:
+					key = VK_NUMPAD0;
+					break;
+				case DIK_NUMPAD1:
+					key = VK_NUMPAD1;
+					break;
+				case DIK_NUMPAD2:
+					key = VK_NUMPAD2;
+					break;
+				case DIK_NUMPAD3:
+					key = VK_NUMPAD3;
+					break;
+				case DIK_NUMPAD4:
+					key = VK_NUMPAD4;
+					break;
+				case DIK_NUMPAD5:
+					key = VK_NUMPAD5;
+					break;
+				case DIK_NUMPAD6:
+					key = VK_NUMPAD6;
+					break;
+				case DIK_NUMPAD7:
+					key = VK_NUMPAD7;
+					break;
+				case DIK_NUMPAD8:
+					key = VK_NUMPAD8;
+					break;
+				case DIK_NUMPAD9:
+					key = VK_NUMPAD9;
+					break;
+				case DIK_DECIMAL:
+					key = VK_DECIMAL;
+					break;
+				case DIK_NUMPADENTER:
+					key = IM_VK_KEYPAD_ENTER;
+					break;
+				case DIK_RMENU:
+					key = VK_RMENU;
+					break;  // right alt
+				case DIK_RCONTROL:
+					key = VK_RCONTROL;
+					break;  // right control
+				case DIK_LWIN:
+					key = VK_LWIN;
+					break;  // left win
+				case DIK_RWIN:
+					key = VK_RWIN;
+					break;  // right win
+				case DIK_APPS:
+					key = VK_APPS;
+					break;
+				default:
+					break;
+				}
+
 				io.AddKeyEvent(ImGui_ImplWin32_VirtualKeyToImGuiKey(key), button->IsPressed());
-				if (button->GetIDCode() == Settings::key_toggle_dmenu) { // home
-					if (button->IsDown()) {
-						Renderer::flip();
+				SubmitImGuiModifierEvents(io);
+				break;
+			}
+			case RE::INPUT_DEVICE::kGamepad: {
+				if (consumeBoundInput) {
+					break;
+				}
+
+				const ImGuiKey gamepadKey = MapGamepadKeyToImGui(static_cast<RE::BSWin32GamepadDevice::Key>(scan_code));
+				if (gamepadKey != ImGuiKey_None) {
+					if (gamepadKey == ImGuiKey_GamepadL2 || gamepadKey == ImGuiKey_GamepadR2) {
+						io.AddKeyAnalogEvent(
+							gamepadKey,
+							button->IsPressed(),
+							button->IsPressed() ? button->Value() : 0.0f);
+					} else {
+						io.AddKeyEvent(gamepadKey, button->IsPressed());
 					}
 				}
 				break;
-			case RE::INPUT_DEVICE::kGamepad:
-				// not implemented yet
-				// key = GetGamepadIndex((RE::BSWin32GamepadDevice::Key)key);
-				break;
+			}
 			default:
 				continue;
 			}
 		}
 	}
 	return;
+}
+
+void InputListener::ApplyBlockedImGuiGamepadKeys()
+{
+	auto& io = ImGui::GetIO();
+	const bool menuEnabled = Renderer::IsEnabled();
+	const ImGuiKey hintToggleKey = menuEnabled ? MapBoundInputCodeToImGuiKey(Settings::key_toggle_hints_gamepad) : ImGuiKey_None;
+	const bool suppressFaceButtonsNow = s_suppressFaceButtonsFrames > 0;
+
+	auto shouldSuppress = [&](ImGuiKey key) -> bool {
+		if (key == ImGuiKey_None) {
+			return false;
+		}
+
+		if (menuEnabled && hintToggleKey != ImGuiKey_None && key == hintToggleKey) {
+			return true;
+		}
+
+		if (suppressFaceButtonsNow &&
+		    (key == ImGuiKey_GamepadFaceDown ||
+		     key == ImGuiKey_GamepadFaceRight ||
+		     key == ImGuiKey_GamepadFaceLeft ||
+		     key == ImGuiKey_GamepadFaceUp)) {
+			return true;
+		}
+
+		const int idx = GetTrackedGamepadKeyIndex(key);
+		return idx >= 0 && s_blockedGamepadKeys[static_cast<std::size_t>(idx)];
+	};
+
+	if (ImGuiContext* ctx = ImGui::GetCurrentContext()) {
+		auto& queue = ctx->InputEventsQueue;
+		for (int i = queue.Size - 1; i >= 0; --i) {
+			const ImGuiInputEvent& ev = queue[i];
+			if (ev.Type != ImGuiInputEventType_Key) {
+				continue;
+			}
+
+			if (shouldSuppress(ev.Key.Key)) {
+				queue.erase(&queue[i]);
+			}
+		}
+	}
+
+	auto suppressKey = [&](ImGuiKey key) {
+		if (key == ImGuiKey_None) {
+			return;
+		}
+
+		if (key == ImGuiKey_GamepadL2 || key == ImGuiKey_GamepadR2) {
+			io.AddKeyAnalogEvent(key, false, 0.0f);
+		} else {
+			io.AddKeyEvent(key, false);
+		}
+
+		ImGuiKeyData* keyData = ImGui::GetKeyData(key);
+		if (keyData) {
+			keyData->Down = false;
+			keyData->AnalogValue = 0.0f;
+			keyData->DownDuration = -1.0f;
+			keyData->DownDurationPrev = -1.0f;
+		}
+	};
+
+	for (std::size_t i = 0; i < kTrackedGamepadKeys.size(); ++i) {
+		const ImGuiKey key = kTrackedGamepadKeys[i];
+		if (!shouldSuppress(key)) {
+			continue;
+		}
+
+		suppressKey(key);
+	}
+
+	if (suppressFaceButtonsNow) {
+		s_suppressFaceButtonsFrames--;
+	}
 }

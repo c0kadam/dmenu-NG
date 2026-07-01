@@ -1,5 +1,8 @@
 #pragma once
 
+// Forward declarations to avoid needing D3D headers in this header.
+struct ID3D11Device;
+struct ID3D11DeviceContext;
 
 class Renderer
 {
@@ -40,15 +43,20 @@ private:
 	static inline ID3D11Device* device = nullptr;
 	static inline ID3D11DeviceContext* context = nullptr;
 
-	static inline bool enable = false;
+	static inline std::atomic<bool> enable{ false };
 
 
 public:
 	static bool Install();
 
 	static void flip();
+	static void SetEnabled(bool a_enabled);
+	static void Open();
+	static void Close();
+	static void Toggle();
 
-	static bool IsEnabled() { return enable; }
+	static bool IsEnabled() { return enable.load(); }
+	static bool IsReady() { return D3DInitHook::initialized.load(); }
 
 	static float GetResolutionScaleWidth();   // { return ImGui::GetIO().DisplaySize.x / 1920.f; }
 	static float GetResolutionScaleHeight();  //{ return ImGui::GetIO().DisplaySize.y / 1080.f; }

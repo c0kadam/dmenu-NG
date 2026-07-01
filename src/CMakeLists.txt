@@ -33,25 +33,44 @@ configure_file(
 	@ONLY
 )
 
+# Use a dedicated target name to avoid clashes with any
+# externally defined targets that may also be called "${PROJECT_NAME}".
+set(DMENU_TARGET "${PROJECT_NAME}_plugin")
+
+# Include extra project files in the IDE only if they exist.
+set(DMENU_EXTRA_FILES "")
+if(EXISTS "${ROOT_DIR}/.clang-format")
+	list(APPEND DMENU_EXTRA_FILES "${ROOT_DIR}/.clang-format")
+endif()
+if(EXISTS "${ROOT_DIR}/.editorconfig")
+	list(APPEND DMENU_EXTRA_FILES "${ROOT_DIR}/.editorconfig")
+endif()
+
 add_library(
-	"${PROJECT_NAME}"
+	"${DMENU_TARGET}"
 	SHARED
 	${SOURCE_FILES}
 	"${VERSION_HEADER}"
 	"${CMAKE_CURRENT_BINARY_DIR}/version.rc"
-	"${ROOT_DIR}/.clang-format"
-	"${ROOT_DIR}/.editorconfig"
+	${DMENU_EXTRA_FILES}
+)
+
+# Keep the actual DLL name as "dmenu" for runtime compatibility.
+set_target_properties(
+	"${DMENU_TARGET}"
+	PROPERTIES
+		OUTPUT_NAME "${PROJECT_NAME}"
 )
 
 target_compile_features(
-	"${PROJECT_NAME}"
+	"${DMENU_TARGET}"
 	PRIVATE
 		cxx_std_20
 )
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 	target_compile_options(
-		"${PROJECT_NAME}"
+		"${DMENU_TARGET}"
 		PRIVATE
 			"/sdl"	# Enable Additional Security Checks
 			"/utf-8"	# Set Source and Executable character sets to UTF-8
@@ -69,7 +88,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 	)
 
 	target_link_options(
-		"${PROJECT_NAME}"
+		"${DMENU_TARGET}"
 		PRIVATE
 			"$<$<CONFIG:DEBUG>:/INCREMENTAL;/OPT:NOREF;/OPT:NOICF>"
 			"$<$<CONFIG:RELEASE>:/INCREMENTAL:NO;/OPT:REF;/OPT:ICF;/DEBUG:FULL>"
@@ -77,7 +96,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 endif()
 
 target_include_directories(
-	"${PROJECT_NAME}"
+	"${DMENU_TARGET}"
 	PRIVATE
 		"${CMAKE_CURRENT_BINARY_DIR}/src"
 		"${SOURCE_DIR}"
@@ -94,40 +113,46 @@ find_package(imgui REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 target_link_libraries(
-	"${PROJECT_NAME}"
+	"${DMENU_TARGET}"
 	PRIVATE
 		CommonLibSSE::CommonLibSSE
 		xbyak::xbyak
 		imgui::imgui
 		nlohmann_json::nlohmann_json
+		imm32
+		ole32
+		windowscodecs
+		mfplat
+		mfreadwrite
+		mfuuid
 )
 
 target_precompile_headers(
-	"${PROJECT_NAME}"
+	"${DMENU_TARGET}"
 	PRIVATE
 		"${SOURCE_DIR}/PCH.h"
 )
 
 install(
 	FILES
-		"$<TARGET_FILE:${PROJECT_NAME}>"
+		"$<TARGET_FILE:${DMENU_TARGET}>"
 	DESTINATION "SKSE/Plugins"
 	COMPONENT "main"
 )
 
 install(
 	FILES
-		"$<TARGET_PDB_FILE:${PROJECT_NAME}>"
+		"$<TARGET_PDB_FILE:${DMENU_TARGET}>"
 	DESTINATION "/"
 	COMPONENT "pdbs"
 )
 
 if("${COPY_OUTPUT}")
 	add_custom_command(
-		TARGET "${PROJECT_NAME}"
+		TARGET "${DMENU_TARGET}"
 		POST_BUILD
-		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${CompiledPluginsPath}/SKSE/Plugins/"
-		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${CompiledPluginsPath}/SKSE/Plugins/"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${DMENU_TARGET}>" "${CompiledPluginsPath}/SKSE/Plugins/"
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_PDB_FILE:${DMENU_TARGET}>" "${CompiledPluginsPath}/SKSE/Plugins/"
 		VERBATIM
 	)
 endif()

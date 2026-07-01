@@ -2,25 +2,18 @@
 #include <imgui_impl_win32.h>
 #include "imgui_internal.h"
 #include "imgui_stdlib.h"
+#include <filesystem>
 
 #include "imgui.h"
 #include "Utils.h"
+#include "ime/IMEWidgets.h"
 namespace Utils
 {
 	namespace imgui
 	{
-		
-
-		void HoverNote(const char* text, const char* note)
+		bool HoverNote(const char* text, const char* note)
 		{
-			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-			ImGui::Text(note);
-			ImGui::PopStyleColor();
-			if (ImGui::IsItemHovered()) {
-				ImGui::BeginTooltip();
-				ImGui::Text(text);
-				ImGui::EndTooltip();
-			}
+			return ImGui::HoverNote(text, note);
 		}
 
 	}
@@ -128,30 +121,24 @@ void settingsLoader::load(uint32_t& settingRef, const char* key)
 
 void settingsLoader::save(bool& settingRef, const char* key)
 {
-	if (_ini.GetValue(_section, key)) {
-		if (settingRef) {
-			_ini.SetValue(_section, key, "true");
-		} else {
-			_ini.SetValue(_section, key, "false");
-		}
-		_savedSettings++;
+	if (settingRef) {
+		_ini.SetValue(_section, key, "true");
+	} else {
+		_ini.SetValue(_section, key, "false");
 	}
+	_savedSettings++;
 }
 
 void settingsLoader::save(float& settingRef, const char* key)
 {
-	if (_ini.GetValue(_section, key)) {
-		_ini.SetValue(_section, key, std::to_string(settingRef).data());
-		_savedSettings++;
-	}
+	_ini.SetValue(_section, key, std::to_string(settingRef).data());
+	_savedSettings++;
 }
 
 void settingsLoader::save(uint32_t& settingRef, const char* key)
 {
-	if (_ini.GetValue(_section, key)) {
-		_ini.SetValue(_section, key, std::to_string(settingRef).data());
-		_savedSettings++;
-	}
+	_ini.SetValue(_section, key, std::to_string(settingRef).data());
+	_savedSettings++;
 }
 
 /*Load an integer value if present.*/
@@ -167,6 +154,16 @@ void settingsLoader::load(int& settingRef, const char* key)
 
 void settingsLoader::flush()
 {
+	// Ensure parent directory exists before saving
+	std::filesystem::path filePath(_settingsFile);
+	std::filesystem::path parentDir = filePath.parent_path();
+	if (!parentDir.empty() && !std::filesystem::exists(parentDir)) {
+		std::error_code ec;
+		std::filesystem::create_directories(parentDir, ec);
+		if (ec) {
+			logger::error("Failed to create directory {}: {}", parentDir.string(), ec.message());
+		}
+	}
 	_ini.SaveFile(_settingsFile);
 }
 
@@ -187,16 +184,35 @@ namespace ImGui
 		return value_changed;
 	}
 
-	void HoverNote(const char* text, const char* note)
+	bool HoverNoteIcon(const char* note, const ImVec4* color)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-		ImGui::Text(note);
+		const ImVec4 defaultColor(0.5f, 0.5f, 0.5f, 1.0f);
+		ImGui::PushStyleColor(ImGuiCol_Text, color ? *color : defaultColor);
+		const char* note_text = note ? note : "(?)";
+		ImGui::TextUnformatted(note_text);
 		ImGui::PopStyleColor();
-		if (ImGui::IsItemHovered()) {
-			ImGui::BeginTooltip();
-			ImGui::Text(text);
-			ImGui::EndTooltip();
+
+		return ImGui::IsItemHovered();
+	}
+
+	void ShowSimpleTooltip(const char* text)
+	{
+		if (text == nullptr || text[0] == '\0') {
+			return;
 		}
+
+		ImGui::BeginTooltip();
+		ImGui::TextUnformatted(text);
+		ImGui::EndTooltip();
+	}
+
+	bool HoverNote(const char* text, const char* note)
+	{
+		const bool hovered = HoverNoteIcon(note, nullptr);
+		if (hovered) {
+			ShowSimpleTooltip(text);
+		}
+		return hovered;
 	}
 
 
@@ -210,11 +226,13 @@ namespace ImGui
 		float width = height * 1.55f;
 		float radius = height * 0.50f;
 
-		ImGui::InvisibleButton(str_id, ImVec2(width, height));
-		if (ImGui::IsItemClicked()) {
+		if (ImGui::InvisibleButton(str_id, ImVec2(width, height))) {
 			*v = !*v;
 			ret = true;
 		}
+
+		const ImRect bb = ImRect(p, ImVec2(p.x + width, p.y + height));
+		ImGui::RenderNavHighlight(bb, ImGui::GetItemID());
 
 		float t = *v ? 1.0f : 0.0f;
 
@@ -246,66 +264,20 @@ namespace ImGui
 			ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(1.0f, 0.0f, 0.0f, 0.2f));
 			ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(1.0f, 0.0f, 0.0f, 0.2f));
 		}
-		bool ret = ImGui::InputText(label, str, flags);
+		bool ret = IMEWidgets::InputText(label, str, flags);
 		if (empty) {
 			ImGui::PopStyleColor(3);
 		}
 		return ret;
 	}
 
-// Callback function to handle resizing the std::string buffer
-	static int InputTextCallback(ImGuiInputTextCallbackData* data)
-	{
-		std::string* str = static_cast<std::string*>(data->UserData);
-		if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
-			str->resize(data->BufTextLen);
-			data->Buf = &(*str)[0];
-		}
-		return 0;
-	}
-
-	
 	bool InputTextWithPaste(const char* label, std::string& text, const ImVec2& size, bool multiline, ImGuiInputTextFlags flags)
 	{
 		ImGui::PushID(&text);
-		// Add the ImGuiInputTextFlags_CallbackResize flag to allow resizing the std::string buffer
-		flags |= ImGuiInputTextFlags_CallbackResize;
-	
-		// Call the InputTextWithCallback function with the std::string buffer and callback function
-		bool result;
-		if (multiline) {
-			result = ImGui::InputTextMultiline(label, &text[0], text.capacity()+1, size, flags, InputTextCallback, &text);
-
-		} else {
-			result = ImGui::InputText(label, &text[0], text.capacity() + 1, flags, InputTextCallback, &text);
-		}
-		
-		// Check if the InputText is hovered and the right mouse button is clicked
-		if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(1)) {
-			// Set the context menu to be shown
-			ImGui::OpenPopup("InputTextContextMenu");
-		}
-
-		// Display the context menu
-		if (ImGui::BeginPopup("InputTextContextMenu")) {
-			if (ImGui::MenuItem("Copy")) {
-				// Copy the selected text to the clipboard
-				const char* selected_text = text.c_str();
-				if (selected_text) {
-					ImGui::SetClipboardText(selected_text);
-				}
-			}
-			if (ImGui::MenuItem("Paste")) {
-				// Read the clipboard content
-				const char* clipboard = ImGui::GetClipboardText();
-
-				if (clipboard) {
-					// Insert the clipboard content into the text buffer
-					text.append(clipboard);
-				}
-			}
-			ImGui::EndPopup();
-		}
+		// Uses imgui_stdlib overloads; native Ctrl+C/V/X/Z/A shortcuts are handled by ImGui.
+		bool result = multiline ?
+			IMEWidgets::InputTextMultiline(label, &text, size, flags) :
+			IMEWidgets::InputText(label, &text, flags);
 		ImGui::PopID();
 		return result;
 	}
@@ -313,53 +285,17 @@ namespace ImGui
 	bool InputTextWithPasteRequired(const char* label, std::string& text, const ImVec2& size, bool multiline, ImGuiInputTextFlags flags)
 	{
 		ImGui::PushID(&text);
-		// Add the ImGuiInputTextFlags_CallbackResize flag to allow resizing the std::string buffer
-		flags |= ImGuiInputTextFlags_CallbackResize;
-
-		// Call the InputTextWithCallback function with the std::string buffer and callback function
 		bool empty = text.empty();
 		if (empty) {
 			ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(1.0f, 0.0f, 0.0f, 0.2f));
 			ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(1.0f, 0.0f, 0.0f, 0.2f));
 			ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(1.0f, 0.0f, 0.0f, 0.2f));
 		}
-		bool result;
-		if (multiline) {
-			result = ImGui::InputTextMultiline(label, &text[0], text.capacity() + 1, size, flags, InputTextCallback, &text);
-
-		} else {
-
-			result = ImGui::InputText(label, &text[0], text.capacity() + 1, flags, InputTextCallback, &text);
-		}
+		bool result = multiline ?
+			IMEWidgets::InputTextMultiline(label, &text, size, flags) :
+			IMEWidgets::InputText(label, &text, flags);
 		if (empty) {
 			ImGui::PopStyleColor(3);
-		}
-
-		// Check if the InputText is hovered and the right mouse button is clicked
-		if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(1)) {
-			// Set the context menu to be shown
-			ImGui::OpenPopup("InputTextContextMenu");
-		}
-
-		// Display the context menu
-		if (ImGui::BeginPopup("InputTextContextMenu")) {
-			if (ImGui::MenuItem("Copy")) {
-				// Copy the selected text to the clipboard
-				const char* selected_text = text.c_str();
-				if (selected_text) {
-					ImGui::SetClipboardText(selected_text);
-				}
-			}
-			if (ImGui::MenuItem("Paste")) {
-				// Read the clipboard content
-				const char* clipboard = ImGui::GetClipboardText();
-
-				if (clipboard) {
-					// Insert the clipboard content into the text buffer
-					text.append(clipboard);
-				}
-			}
-			ImGui::EndPopup();
 		}
 		ImGui::PopID();
 		return result;

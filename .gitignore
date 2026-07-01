@@ -1,13 +1,51 @@
 !Update.ps1
+
+# CMake / build output
+/build*/
+/out/
 CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
+CMakeFiles/
+CMakeScripts/
+Testing/
 Makefile
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
-build
-.clang-format
-.editorconfig
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.ninja
+
+# Local CMake / IDE state
+CMakeUserPresets.json
+*.user
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.code-workspace
+.vs/
+
+# Binary outputs and logs
+*.dll
+!Data/SKSE/Plugins/dmenu.dll
+*.pdb
+*.lib
+*.exp
+*.obj
+*.ilk
+*.log
+build_output.txt
+build_log.txt
+
+# Python/cache tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Packaged release artifacts and editor backups
+*.zip
+*.7z
+*.rar
+*.bak.*

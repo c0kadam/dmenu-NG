@@ -1,0 +1,2386 @@
+{
+  "ini": "Data\\\\SKSE\\\\Plugins\\\\favwheel\\\\Controls.ini",
+  "data": [
+    {
+      "type": "group",
+      "text": {
+        "desc": "Standalone Favorites Wheel. Edits favwheel/Controls.ini - does NOT affect main Wheeler bindings.",
+        "name": "Favorite Wheel"
+      },
+      "layout": {
+        "mode": "grid",
+        "columns": 3
+      },
+      "entries": [
+        {
+          "control": {
+            "failAction": "disable"
+          },
+          "entries": [
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "enabled",
+                "section": "FavWheel"
+              },
+              "text": {
+                "desc": "Master toggle for FavWheel (standalone compatible).",
+                "name": "Enable Favorite Wheel"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "runtimeEnabled",
+                "section": "FavWheel"
+              },
+              "text": {
+                "desc": "Toggle FavWheel at runtime. Disabling closes the wheel and unbinds inputs.",
+                "name": "Runtime Enabled"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "suppressVanilla",
+                "section": "FavWheel"
+              },
+              "text": {
+                "desc": "Blocks vanilla Quick FavoritesMenu when FavWheel is enabled.",
+                "name": "Suppress Vanilla Favorites"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": false,
+              "ini": {
+                "id": "wheelerRefinedFeatures",
+                "section": "FavWheel"
+              },
+              "text": {
+                "desc": "When enabled and If you are using Wheeler Refined, all the WR features can be used in FavWheel.",
+                "name": "Wheeler Refined Features"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            }
+          ],
+          "text": {
+            "desc": "Master toggles and integration behavior.",
+            "name": "General Settings"
+          },
+          "translation": {
+            "desc": "",
+            "name": ""
+          },
+          "type": "group"
+        },
+        {
+          "control": {
+            "failAction": "disable"
+          },
+          "entries": [
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "all",
+                "section": "FavWheel.Categories"
+              },
+              "text": {
+                "desc": "Enable the All category tab.",
+                "name": "Show 'All'"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "gear",
+                "section": "FavWheel.Categories"
+              },
+              "text": {
+                "desc": "Enable the Gear category tab.",
+                "name": "Show 'Gear'"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "aid",
+                "section": "FavWheel.Categories"
+              },
+              "text": {
+                "desc": "Enable the Aid category tab.",
+                "name": "Show 'Aid'"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "magic",
+                "section": "FavWheel.Categories"
+              },
+              "text": {
+                "desc": "Enable the Magic category tab.",
+                "name": "Show 'Magic'"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": true,
+              "ini": {
+                "id": "shout",
+                "section": "FavWheel.Categories"
+              },
+              "text": {
+                "desc": "Enable the Shout category tab.",
+                "name": "Show 'Shout'"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "checkbox"
+            }
+          ],
+          "text": {
+            "desc": "Show or hide individual category tabs.",
+            "name": "Vanilla Categories"
+          },
+          "translation": {
+            "desc": "",
+            "name": ""
+          },
+          "type": "group",
+          "hint": {
+            "showOn": "both",
+            "media": {
+              "type": "webm",
+              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\FavWheel\\frames\\favwheel_1.webm",
+              "maxW": 360,
+              "maxH": 220,
+              "loop": true,
+              "preload": false
+            }
+          }
+        },
+        {
+          "control": {
+            "failAction": "disable"
+          },
+          "entries": [
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 0.0,
+              "ini": {
+                "id": "mode",
+                "section": "FavWheel.Advanced"
+              },
+              "style": {
+                "max": 2.0,
+                "min": 0.0,
+                "step": 1.0
+              },
+              "text": {
+                "desc": "0 = Vanilla only, 1 = Advanced only, 2 = Hybrid (Vanilla then Advanced).",
+                "name": "Category Mode"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "slider"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "mostUsed",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the smart Most Used category.",
+                    "name": "Show 'Most Used'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "weapons",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Weapons category.",
+                    "name": "Show 'Weapons'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "armor",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Armor category.",
+                    "name": "Show 'Armor'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "shields",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Shields category.",
+                    "name": "Show 'Shields'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "apparel",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Apparel category.",
+                    "name": "Show 'Apparel'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable",
+                    "id": "#AdvConsumablesEnabled"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "consumables",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Consumables category.",
+                    "name": "Show 'Consumables'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable",
+                    "requirements": [
+                      {
+                        "id": "#AdvConsumablesEnabled",
+                        "type": "checkbox",
+                        "value": true
+                      }
+                    ]
+                  },
+                  "entries": [
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "all",
+                        "section": "FavWheel.AdvancedCategories"
+                      },
+                      "text": {
+                        "desc": "Show a single Consumables category that contains all consumables.",
+                        "name": "Consumables ALL"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": false,
+                      "ini": {
+                        "id": "potions",
+                        "section": "FavWheel.AdvancedCategories"
+                      },
+                      "text": {
+                        "desc": "Show the Potions consumables category when split mode is active.",
+                        "name": "Consumables Potions"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": false,
+                      "ini": {
+                        "id": "poisons",
+                        "section": "FavWheel.AdvancedCategories"
+                      },
+                      "text": {
+                        "desc": "Show the Poisons consumables category when split mode is active.",
+                        "name": "Consumables Poisons"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": false,
+                      "ini": {
+                        "id": "foods",
+                        "section": "FavWheel.AdvancedCategories"
+                      },
+                      "text": {
+                        "desc": "Show the Foods consumables category when split mode is active.",
+                        "name": "Consumables Foods"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": false,
+                      "ini": {
+                        "id": "drinks",
+                        "section": "FavWheel.AdvancedCategories"
+                      },
+                      "text": {
+                        "desc": "Show the Drinks consumables category when split mode is active.",
+                        "name": "Consumables Drinks"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": 0.0,
+                      "ini": {
+                        "id": "preset",
+                        "section": "FavWheel.AdvancedCategories"
+                      },
+                      "style": {
+                        "max": 7.0,
+                        "min": 0.0,
+                        "step": 1.0
+                      },
+                      "text": {
+                        "desc": "0=Custom, 1=Consumables ALL, 2=Potions, 3=Poisons, 4=Foods, 5=Drinks, 6=Survival (Foods+Drinks), 7=Alchemy (Potions+Poisons).",
+                        "name": "Consumables Preset"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "slider"
+                    }
+                  ],
+                  "text": {
+                    "desc": "Sub-selection for the advanced Consumables category.",
+                    "name": "Consumables Filters"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "group"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "scrolls",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Scrolls category.",
+                    "name": "Show 'Scrolls'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "spells",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Spells category.",
+                    "name": "Show 'Spells'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "powers",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Powers category.",
+                    "name": "Show 'Powers'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "shouts",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable Shouts in advanced modes.",
+                    "name": "Show 'Shouts'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "utility",
+                    "section": "FavWheel.AdvancedCategories"
+                  },
+                  "text": {
+                    "desc": "Enable the Utility category.",
+                    "name": "Show 'Utility'"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                }
+              ],
+              "text": {
+                "desc": "Show or hide advanced categories in the category cycle.",
+                "name": "Advanced Category Toggles"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "categoryMode",
+                    "section": "FavWheel.Open"
+                  },
+                  "options": [
+                    "Last Closed Category",
+                    "Most Used"
+                  ],
+                  "text": {
+                    "desc": "Choose the category shown first when FavWheel opens.",
+                    "name": "Initial Category"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "pageMode",
+                    "section": "FavWheel.Open"
+                  },
+                  "options": [
+                    "Remember Last Page",
+                    "Always First Page"
+                  ],
+                  "text": {
+                    "desc": "Choose whether opening FavWheel keeps each category on its last page or starts from page 1.",
+                    "name": "Initial Page"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                }
+              ],
+              "text": {
+                "desc": "Startup behavior for category and page when opening FavWheel.",
+                "name": "Open Behavior"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 12.0,
+                  "ini": {
+                    "id": "mostUsedMax",
+                    "section": "FavWheel.Advanced"
+                  },
+                  "style": {
+                    "max": 48.0,
+                    "min": 1.0,
+                    "step": 1.0
+                  },
+                  "text": {
+                    "desc": "Maximum entries shown in Most Used.",
+                    "name": "Most Used Max Entries"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "slider"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 1.0,
+                  "ini": {
+                    "id": "mostUsedMinCount",
+                    "section": "FavWheel.Advanced"
+                  },
+                  "style": {
+                    "max": 50.0,
+                    "min": 0.0,
+                    "step": 1.0
+                  },
+                  "text": {
+                    "desc": "Minimum usage count required to appear in Most Used.",
+                    "name": "Most Used Min Count"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "slider"
+                }
+              ],
+              "text": {
+                "desc": "Tuning values for the dynamic Most Used category.",
+                "name": "Most Used Tuning"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "mode",
+                    "section": "FavWheel.Source"
+                  },
+                  "options": [
+                    "Favorites",
+                    "Inventory",
+                    "Hybrid"
+                  ],
+                  "text": {
+                    "desc": "Favorites=legacy, Inventory=full inventory, Hybrid=per-category favorites+inventory toggle.",
+                    "name": "Category Source Mode"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "entries": [
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "weapons",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Weapons.",
+                        "name": "Hybrid Weapons"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "armor",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Armor.",
+                        "name": "Hybrid Armor"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "shields",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Shields.",
+                        "name": "Hybrid Shields"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "apparel",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Apparel.",
+                        "name": "Hybrid Apparel"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "consumables",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Consumables.",
+                        "name": "Hybrid Consumables"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "potions",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Potions.",
+                        "name": "Hybrid Potions"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "poisons",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Poisons.",
+                        "name": "Hybrid Poisons"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "foods",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Foods.",
+                        "name": "Hybrid Foods"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "drinks",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Drinks.",
+                        "name": "Hybrid Drinks"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "scrolls",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Scrolls.",
+                        "name": "Hybrid Scrolls"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    },
+                    {
+                      "control": {
+                        "failAction": "disable"
+                      },
+                      "default": true,
+                      "ini": {
+                        "id": "utility",
+                        "section": "FavWheel.SourceHybrid"
+                      },
+                      "text": {
+                        "desc": "When enabled, Hybrid mode includes full inventory entries in Utility.",
+                        "name": "Hybrid Utility"
+                      },
+                      "translation": {
+                        "desc": "",
+                        "name": ""
+                      },
+                      "type": "checkbox"
+                    }
+                  ],
+                  "text": {
+                    "desc": "Used only when Category Source Mode = Hybrid. Enabled categories merge favorites with full inventory.",
+                    "name": "Hybrid Categories"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "group"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "includeEquipped",
+                    "section": "FavWheel.Source"
+                  },
+                  "text": {
+                    "desc": "When disabled, equipped inventory entries are filtered out in inventory source mode.",
+                    "name": "Include Equipped Items"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": true,
+                  "ini": {
+                    "id": "includeStolen",
+                    "section": "FavWheel.Source"
+                  },
+                  "text": {
+                    "desc": "When disabled, stolen inventory entries are filtered out when detectable.",
+                    "name": "Include Stolen Items"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": false,
+                  "ini": {
+                    "id": "excludeQuestItems",
+                    "section": "FavWheel.Source"
+                  },
+                  "text": {
+                    "desc": "Best-effort quest-item filter for inventory source mode.",
+                    "name": "Exclude Quest Items"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "checkbox"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 200.0,
+                  "ini": {
+                    "id": "maxEntriesPerCategory",
+                    "section": "FavWheel.Source"
+                  },
+                  "style": {
+                    "max": 500.0,
+                    "min": 0.0,
+                    "step": 1.0
+                  },
+                  "text": {
+                    "desc": "0 = unlimited. Positive values cap inventory-backed category entries after sorting.",
+                    "name": "Max Entries per Category"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "slider"
+                }
+              ],
+              "text": {
+                "desc": "Switch refined category population between favorites and full inventory.",
+                "name": "Category Source"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "shout",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Cooldown (Desc)",
+                    "Cooldown (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Cooldown desc, 2=Cooldown asc.",
+                    "name": "Shout Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "weapons",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Damage (Desc)",
+                    "Damage (Asc)",
+                    "DPS (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Damage desc, 2=Damage asc, 3=DPS desc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Weapons Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "armor",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Armor (Desc)",
+                    "Armor (Asc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Armor desc, 2=Armor asc, 3=Value desc, 4=Value asc, 5=Weight asc.",
+                    "name": "Armor Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "shields",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Armor (Desc)",
+                    "Armor (Asc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Armor desc, 2=Armor asc, 3=Value desc, 4=Value asc, 5=Weight asc.",
+                    "name": "Shields Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "apparel",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Armor (Desc)",
+                    "Armor (Asc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Armor desc, 2=Armor asc, 3=Value desc, 4=Value asc, 5=Weight asc.",
+                    "name": "Apparel Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "consumables",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=RestoreHealth desc, 2=RestoreStamina desc, 3=RestoreMagicka desc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Consumables Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "potions",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=RestoreHealth desc, 2=RestoreStamina desc, 3=RestoreMagicka desc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Potions Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "poisons",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Gold Value (High to Low)",
+                    "Health Damage DPS",
+                    "Health Damage Total",
+                    "Paralysis (Longest First)",
+                    "Weakness (Strongest First)",
+                    "Stamina Drain (Total)",
+                    "Magicka Drain (Total)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=GoldValue desc, 2=HealthDamageDPS desc, 3=HealthDamageTotal desc, 4=ParalysisDuration desc, 5=WeaknessStrength desc, 6=StaminaDrainTotal desc, 7=MagickaDrainTotal desc.",
+                    "name": "Poisons Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "foods",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=RestoreHealth desc, 2=RestoreStamina desc, 3=RestoreMagicka desc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Foods Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "drinks",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=RestoreHealth desc, 2=RestoreStamina desc, 3=RestoreMagicka desc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Drinks Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "scrolls",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Value desc, 2=Value asc, 3=Weight asc.",
+                    "name": "Scrolls Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "utility",
+                    "section": "FavWheel.InventorySort"
+                  },
+                  "options": [
+                    "Name",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=Name, 1=Value desc, 2=Value asc, 3=Weight asc.",
+                    "name": "Utility Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                }
+              ],
+              "text": {
+                "desc": "Per-category primary sorting for refined categories. Shout sort applies in all source modes.",
+                "name": "Inventory Primary Sorting"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "weapons",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Damage (Desc)",
+                    "Damage (Asc)",
+                    "DPS (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=Damage desc, 3=Damage asc, 4=DPS desc, 5=Value desc, 6=Value asc, 7=Weight asc.",
+                    "name": "Weapons Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "armor",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Armor (Desc)",
+                    "Armor (Asc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=Armor desc, 3=Armor asc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Armor Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "shields",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Armor (Desc)",
+                    "Armor (Asc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=Armor desc, 3=Armor asc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Shields Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "apparel",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Armor (Desc)",
+                    "Armor (Asc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=Armor desc, 3=Armor asc, 4=Value desc, 5=Value asc, 6=Weight asc.",
+                    "name": "Apparel Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "consumables",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=RestoreHealth desc, 3=RestoreStamina desc, 4=RestoreMagicka desc, 5=Value desc, 6=Value asc, 7=Weight asc.",
+                    "name": "Consumables Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "potions",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=RestoreHealth desc, 3=RestoreStamina desc, 4=RestoreMagicka desc, 5=Value desc, 6=Value asc, 7=Weight asc.",
+                    "name": "Potions Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "poisons",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Gold Value (High to Low)",
+                    "Health Damage DPS",
+                    "Health Damage Total",
+                    "Paralysis (Longest First)",
+                    "Weakness (Strongest First)",
+                    "Stamina Drain (Total)",
+                    "Magicka Drain (Total)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=GoldValue desc, 3=HealthDamageDPS desc, 4=HealthDamageTotal desc, 5=ParalysisDuration desc, 6=WeaknessStrength desc, 7=StaminaDrainTotal desc, 8=MagickaDrainTotal desc.",
+                    "name": "Poisons Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "foods",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=RestoreHealth desc, 3=RestoreStamina desc, 4=RestoreMagicka desc, 5=Value desc, 6=Value asc, 7=Weight asc.",
+                    "name": "Foods Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "drinks",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Restore Health (Desc)",
+                    "Restore Stamina (Desc)",
+                    "Restore Magicka (Desc)",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=RestoreHealth desc, 3=RestoreStamina desc, 4=RestoreMagicka desc, 5=Value desc, 6=Value asc, 7=Weight asc.",
+                    "name": "Drinks Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "scrolls",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=Value desc, 3=Value asc, 4=Weight asc.",
+                    "name": "Scrolls Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "utility",
+                    "section": "FavWheel.InventorySortSecondary"
+                  },
+                  "options": [
+                    "None",
+                    "Name",
+                    "Value (Desc)",
+                    "Value (Asc)",
+                    "Weight (Asc)"
+                  ],
+                  "text": {
+                    "desc": "0=None, 1=Name, 2=Value desc, 3=Value asc, 4=Weight asc.",
+                    "name": "Utility Secondary Sort"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                }
+              ],
+              "text": {
+                "desc": "Per-category secondary sorting used as tie-breaker after primary sort.",
+                "name": "Inventory Secondary Sorting"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "entries": [
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "weapons",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Weapons by weapon type before applying metric sort.",
+                    "name": "Weapons Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "armor",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Armor by armor class/slot before applying metric sort.",
+                    "name": "Armor Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "shields",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Shields by shield class before applying metric sort.",
+                    "name": "Shields Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "apparel",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Apparel by slot type before applying metric sort.",
+                    "name": "Apparel Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "consumables",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Consumables by potion/poison/food/drink family before metric sort.",
+                    "name": "Consumables Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "potions",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Potions by dominant restore stat before metric sort.",
+                    "name": "Potions Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "poisons",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Poisons by dominant affected stat before metric sort.",
+                    "name": "Poisons Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "foods",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Foods by dominant restore stat before metric sort.",
+                    "name": "Foods Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "drinks",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Drinks by dominant restore stat before metric sort.",
+                    "name": "Drinks Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "scrolls",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Scrolls by type family before metric sort.",
+                    "name": "Scrolls Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                },
+                {
+                  "control": {
+                    "failAction": "disable"
+                  },
+                  "default": 0,
+                  "ini": {
+                    "id": "utility",
+                    "section": "FavWheel.InventoryTypeGroup"
+                  },
+                  "options": [
+                    "Disabled",
+                    "Enabled"
+                  ],
+                  "text": {
+                    "desc": "Group Utility entries by item family (light/book/misc/other) before metric sort.",
+                    "name": "Utility Type Grouping"
+                  },
+                  "translation": {
+                    "desc": "",
+                    "name": ""
+                  },
+                  "type": "dropdown"
+                }
+              ],
+              "text": {
+                "desc": "Optional per-category grouping by item type before primary and secondary sort.",
+                "name": "Inventory Type Grouping"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "group"
+            }
+          ],
+          "text": {
+            "desc": "Optional advanced category set and Most Used behavior.",
+            "name": "Refined Categories (Advanced)"
+          },
+          "translation": {
+            "desc": "",
+            "name": ""
+          },
+          "type": "group"
+        },
+        {
+          "control": {
+            "failAction": "disable"
+          },
+          "entries": [
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 10.0,
+              "ini": {
+                "id": "pageSize",
+                "section": "FavWheel"
+              },
+              "style": {
+                "max": 20.0,
+                "min": 4.0,
+                "step": 1.0
+              },
+              "text": {
+                "desc": "Number of items shown per wheel page.",
+                "name": "Items per Page"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "slider"
+            }
+          ],
+          "text": {
+            "desc": "Items per page for long favorites lists.",
+            "name": "Paging"
+          },
+          "translation": {
+            "desc": "",
+            "name": ""
+          },
+          "type": "group"
+        },
+        {
+          "control": {
+            "failAction": "disable"
+          },
+          "entries": [
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 58,
+              "ini": {
+                "id": "toggleWheel",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Open/close FavWheel (default: Caps Lock=58).",
+                "name": "Toggle Wheel"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 15,
+              "ini": {
+                "id": "nextWheel",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Cycle to next category (default: Tab=15).",
+                "name": "Next Category"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 42,
+              "ini": {
+                "id": "prevWheel",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Cycle to previous category (default: L-Shift=42).",
+                "name": "Prev Category"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 265,
+              "ini": {
+                "id": "nextItem",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Go to next page (default: Mouse Wheel Down=265).",
+                "name": "Next Page"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 264,
+              "ini": {
+                "id": "prevItem",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Go to previous page (default: Mouse Wheel Up=264).",
+                "name": "Prev Page"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 256,
+              "ini": {
+                "id": "activatePrimary",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Use/Equip item (default: LMB=256).",
+                "name": "Activate Primary"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 257,
+              "ini": {
+                "id": "activateSecondary",
+                "section": "InputBindings.MKB"
+              },
+              "text": {
+                "desc": "Alternate use (default: RMB=257).",
+                "name": "Activate Secondary"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            }
+          ],
+          "text": {
+            "desc": "Key bindings for keyboard and mouse.",
+            "name": "Keyboard/Mouse Bindings"
+          },
+          "translation": {
+            "desc": "",
+            "name": ""
+          },
+          "type": "group"
+        },
+        {
+          "control": {
+            "failAction": "disable"
+          },
+          "entries": [
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 274,
+              "ini": {
+                "id": "toggleWheel",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Open/close FavWheel (default: Y=274).",
+                "name": "Toggle Wheel"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 281,
+              "ini": {
+                "id": "nextWheel",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Cycle to next category (default: RB=281).",
+                "name": "Next Category"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 280,
+              "ini": {
+                "id": "prevWheel",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Cycle to previous category (default: LB=280).",
+                "name": "Prev Category"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 268,
+              "ini": {
+                "id": "nextItem",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Go to next page (default: D-Pad Right=268).",
+                "name": "Next Page"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 269,
+              "ini": {
+                "id": "prevItem",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Go to previous page (default: D-Pad Left=269).",
+                "name": "Prev Page"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 275,
+              "ini": {
+                "id": "activatePrimary",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Use/Equip item (default: RT=275).",
+                "name": "Activate Primary"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            },
+            {
+              "control": {
+                "failAction": "disable"
+              },
+              "default": 274,
+              "ini": {
+                "id": "activateSecondary",
+                "section": "InputBindings.GamePad"
+              },
+              "text": {
+                "desc": "Alternate use (default: B=274).",
+                "name": "Activate Secondary"
+              },
+              "translation": {
+                "desc": "",
+                "name": ""
+              },
+              "type": "keymap"
+            }
+          ],
+          "text": {
+            "desc": "Key bindings for gamepad.",
+            "name": "Gamepad Bindings"
+          },
+          "translation": {
+            "desc": "",
+            "name": ""
+          },
+          "type": "group"
+        }
+      ]
+    }
+  ]
+}
