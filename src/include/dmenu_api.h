@@ -12,7 +12,7 @@
 
 namespace dmenu_api
 {
-	inline constexpr std::uint32_t kInterfaceVersion = 1;
+	inline constexpr std::uint32_t kInterfaceVersion = 2;
 
 	// dMenu broadcasts this SKSE message at kPostLoad.
 	// Register a listener for sender "dmenu" and cast message->data to Interface.
@@ -25,6 +25,9 @@ namespace dmenu_api
 	using VoidMenuFn = void (*)();
 	using IsMenuOpenFn = bool (*)();
 	using IsReadyFn = bool (*)();
+	// v2
+	using GetToggleKeyFn = std::uint32_t (*)();
+	using SetToggleKeyFn = void (*)(std::uint32_t);
 
 	struct Interface
 	{
@@ -39,6 +42,15 @@ namespace dmenu_api
 		IsReadyFn IsReady;
 		GetApiVersionFn GetApiVersion;
 		GetInterfaceFn GetInterface;
+
+		// --- v2 additions (keyboard/mouse toggle-key control, applied live) ---
+		// GetToggleKeyMkb: current keyboard/mouse toggle scan code (0 = no key bound).
+		// SetToggleKeyMkb: set it at runtime; pass 0 to disable dMenu's own keyboard toggle
+		//   entirely (e.g. to free the key for other use). Takes effect immediately, no restart,
+		//   and is NOT persisted to dmenu.ini — re-apply each session. New members are appended,
+		//   so v1 consumers keep working; check interfaceVersion >= 2 (or structSize) before use.
+		GetToggleKeyFn GetToggleKeyMkb;
+		SetToggleKeyFn SetToggleKeyMkb;
 	};
 }
 
@@ -52,4 +64,7 @@ extern "C"
 	DMENU_API void dMenu_ToggleMenu();
 	DMENU_API bool dMenu_IsMenuOpen();
 	DMENU_API bool dMenu_IsReady();
+	// v2
+	DMENU_API std::uint32_t dMenu_GetToggleKeyMkb();
+	DMENU_API void dMenu_SetToggleKeyMkb(std::uint32_t a_key);
 }

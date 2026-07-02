@@ -617,6 +617,16 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				}
 			}
 
+			// Escape closes the menu while it is open (unless typing in a field or capturing a
+			// rebind). Lets the menu be dismissed even when its toggle key is unbound/disabled.
+			constexpr std::uint32_t kDikEscape = 0x01;
+			if (!isCapturingInput && !screenKeyboardPending && button->IsDown() && !io.WantTextInput &&
+			    Renderer::IsEnabled() &&
+			    button->device.get() == RE::INPUT_DEVICE::kKeyboard &&
+			    scan_code == kDikEscape) {
+				Renderer::Close();
+			}
+
 			bool consumeBoundInput = isMenuToggleBinding;
 			if (screenKeyboardPending && isMenuToggleBinding) {
 				if (button->IsDown()) {

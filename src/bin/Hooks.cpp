@@ -24,8 +24,13 @@ void Hooks::OnInputEventDispatch::DispatchInputEvent(RE::BSTEventSource<RE::Inpu
 		_DispatchInputEvent(a_dispatcher, a_evns);
 		return;
 	}
+	// Capture the menu state BEFORE processing: if the menu was open when this input arrived, the
+	// game must not see it — even if ProcessEvent closes the menu this frame (e.g. Escape or the
+	// toggle key). Otherwise the closing keypress leaks through and, for Escape, also opens the
+	// game's pause menu.
+	const bool menuWasOpen = Renderer::IsEnabled();
 	InputListener::GetSingleton()->ProcessEvent(a_evns);
-	if (Renderer::IsEnabled()) {
+	if (menuWasOpen || Renderer::IsEnabled()) {
 		_DispatchInputEvent(a_dispatcher, dummy);
 		return;
 	} else {

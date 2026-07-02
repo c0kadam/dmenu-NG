@@ -412,7 +412,7 @@ namespace
 	std::string BuildBindingChord(uint32_t primaryInput, uint32_t modifierInput)
 	{
 		if (primaryInput == 0) {
-			return TR("key_unmapped", "Unmapped");
+			return TR("settings_none", "None");
 		}
 
 		if (modifierInput == 0) {
@@ -2986,8 +2986,8 @@ void ModSettings::insert_all_game_setting()
 const char* ModSettings::setting_keymap::keyid_to_str(int key_id)
 {
 	switch (key_id) {
-	case 0: 
-		return TR("key_unmapped", "Unmapped");
+	case 0:
+		return TR("settings_none", "None");
 	case 1:
 		return TR("key_escape", "Escape");
 	case 2:

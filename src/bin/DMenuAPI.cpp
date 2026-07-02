@@ -7,6 +7,7 @@
 #include "DMenuAPI.h"
 
 #include "Renderer.h"
+#include "menus/Settings.h"
 
 extern "C" DMENU_API std::uint32_t dMenu_GetApiVersion()
 {
@@ -25,7 +26,9 @@ extern "C" DMENU_API const dmenu_api::Interface* dMenu_GetInterface(std::uint32_
 		dMenu_IsMenuOpen,
 		dMenu_IsReady,
 		dMenu_GetApiVersion,
-		dMenu_GetInterface
+		dMenu_GetInterface,
+		dMenu_GetToggleKeyMkb,
+		dMenu_SetToggleKeyMkb
 	};
 
 	if (a_requestedVersion != 0 && a_requestedVersion > dmenu_api::kInterfaceVersion) {
@@ -63,6 +66,19 @@ extern "C" DMENU_API bool dMenu_IsMenuOpen()
 extern "C" DMENU_API bool dMenu_IsReady()
 {
 	return Renderer::IsReady();
+}
+
+extern "C" DMENU_API std::uint32_t dMenu_GetToggleKeyMkb()
+{
+	return Settings::key_toggle_dmenu_mkb;
+}
+
+extern "C" DMENU_API void dMenu_SetToggleKeyMkb(std::uint32_t a_key)
+{
+	// Applied live to the value InputListener reads each frame. 0 disables dMenu's own
+	// keyboard toggle. Not written to dmenu.ini, so a fresh launch restores the user's
+	// configured key until this is called again.
+	Settings::key_toggle_dmenu_mkb = a_key;
 }
 
 void DMenuAPI::DispatchInterface()
