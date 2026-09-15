@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Copyright (c) 2026 C0kadam
+// See LICENSES/dMenu-API-MIT.txt.
 
 #pragma once
 

@@ -9,6 +9,13 @@
 #include "ime/IMEWidgets.h"
 namespace Utils
 {
+	namespace
+	{
+		_GetFormEditorID g_po3GetFormEditorID = nullptr;
+		std::unordered_map<RE::FormID, std::string> g_nativeEditorIDs;
+		bool g_editorIDCacheInitialized = false;
+	}
+
 	namespace imgui
 	{
 		bool HoverNote(const char* text, const char* note)
@@ -18,46 +25,95 @@ namespace Utils
 
 	}
 
-	std::string getFormEditorID(const RE::TESForm* a_form)
+	void InitializeFormEditorIDCache()
 	{
-		switch (a_form->GetFormType()) {
-		case RE::FormType::Keyword:
-		case RE::FormType::LocationRefType:
-		case RE::FormType::Action:
-		case RE::FormType::MenuIcon:
-		case RE::FormType::Global:
-		case RE::FormType::HeadPart:
-		case RE::FormType::Race:
-		case RE::FormType::Sound:
-		case RE::FormType::Script:
-		case RE::FormType::Navigation:
-		case RE::FormType::Cell:
-		case RE::FormType::WorldSpace:
-		case RE::FormType::Land:
-		case RE::FormType::NavMesh:
-		case RE::FormType::Dialogue:
-		case RE::FormType::Quest:
-		case RE::FormType::Idle:
-		case RE::FormType::AnimatedObject:
-		case RE::FormType::ImageAdapter:
-		case RE::FormType::VoiceType:
-		case RE::FormType::Ragdoll:
-		case RE::FormType::DefaultObject:
-		case RE::FormType::MusicType:
-		case RE::FormType::StoryManagerBranchNode:
-		case RE::FormType::StoryManagerQuestNode:
-		case RE::FormType::StoryManagerEventNode:
-		case RE::FormType::SoundRecord:
-			return a_form->GetFormEditorID();
-		default:
-			{
-				static auto tweaks = GetModuleHandle("po3_Tweaks");
-				static auto func = reinterpret_cast<_GetFormEditorID>(GetProcAddress(tweaks, "GetFormEditorID"));
-				if (func) {
-					return func(a_form->formID);
+		if (g_editorIDCacheInitialized) {
+			return;
+		}
+		g_editorIDCacheInitialized = true;
+
+		if (const auto tweaks = ::GetModuleHandleW(L"po3_Tweaks.dll")) {
+			g_po3GetFormEditorID = reinterpret_cast<_GetFormEditorID>(::GetProcAddress(tweaks, "GetFormEditorID"));
+		}
+
+		std::size_t weatherCount = 0;
+		std::size_t regionCount = 0;
+		const auto& [map, lock] = RE::TESForm::GetAllFormsByEditorID();
+		[[maybe_unused]] const RE::BSReadLockGuard guard{ lock };
+		if (map) {
+			g_nativeEditorIDs.reserve(map->size());
+			for (const auto& [editorID, form] : *map) {
+				if (!form || editorID.empty()) {
+					continue;
 				}
-				return {};
+
+				g_nativeEditorIDs.try_emplace(form->GetFormID(), editorID.c_str());
+				if (form->GetFormType() == RE::FormType::Weather) {
+					++weatherCount;
+				} else if (form->GetFormType() == RE::FormType::Region) {
+					++regionCount;
+				}
 			}
+		}
+
+		logger::warn(
+			"EditorID cache diagnostics: po3 export={}, native entries={}, native weather={}, native region={}"sv,
+			g_po3GetFormEditorID ? "available" : "unavailable",
+			g_nativeEditorIDs.size(),
+			weatherCount,
+			regionCount);
+	}
+
+	bool IsFormEditorIDCacheInitialized() noexcept
+	{
+		return g_editorIDCacheInitialized;
+	}
+
+	std::string getFormEditorID(const RE::TESForm* a_form, EditorIDSource* a_source)
+	{
+		auto setSource = [a_source](EditorIDSource a_value) {
+			if (a_source) {
+				*a_source = a_value;
+			}
+		};
+
+		if (!a_form) {
+			setSource(EditorIDSource::Unavailable);
+			return {};
+		}
+
+		if (const auto editorID = a_form->GetFormEditorID(); editorID && *editorID) {
+			setSource(EditorIDSource::Direct);
+			return editorID;
+		}
+
+		if (g_po3GetFormEditorID) {
+			if (const auto editorID = g_po3GetFormEditorID(a_form->GetFormID()); editorID && *editorID) {
+				setSource(EditorIDSource::Po3Tweaks);
+				return editorID;
+			}
+		}
+
+		if (const auto it = g_nativeEditorIDs.find(a_form->GetFormID()); it != g_nativeEditorIDs.end() && !it->second.empty()) {
+			setSource(EditorIDSource::NativeMap);
+			return it->second;
+		}
+
+		setSource(EditorIDSource::Unavailable);
+		return {};
+	}
+
+	std::string_view GetEditorIDSourceName(EditorIDSource a_source) noexcept
+	{
+		switch (a_source) {
+		case EditorIDSource::Direct:
+			return "direct"sv;
+		case EditorIDSource::Po3Tweaks:
+			return "po3"sv;
+		case EditorIDSource::NativeMap:
+			return "native-map"sv;
+		default:
+			return "hex-fallback"sv;
 		}
 	}
 

@@ -4,6 +4,10 @@
 #include "DMenuAPI.h"
 #include "menus/ModSettings.h"
 #include "menus/Settings.h"
+#include "menus/Trainer.h"
+#include "RuntimeCompatibility.h"
+#include "WheelerCooperativeOpening.h"
+#include "Utils.h"
 
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 {
@@ -11,12 +15,15 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 	case SKSE::MessagingInterface::kDataLoaded:
 		// Load Interface\Translations\dmenu_<LANG>.txt once Scaleform is ready.
 		SKSE::Translation::ParseTranslation(std::string(Plugin::NAME));
+		Utils::InitializeFormEditorIDCache();
+		Trainer::init();
 
-		Hooks::Install();
-		ModSettings::save_all_game_setting();  // in case some .esp overwrite the game setting // fixme
-		ModSettings::SendAllSettingsUpdateEvent(); // notify all mods to update their settings
+		// Restore configured values after plugins have applied their game-setting overrides.
+		ModSettings::save_all_game_setting();
+		ModSettings::SendAllSettingsUpdateEvent();
 		break;
 	case SKSE::MessagingInterface::kPostLoad:
+		WheelerCooperativeOpening::RetryInitializationAfterPluginsLoaded();
 		DMenuAPI::DispatchInterface();
 		break;
 	case SKSE::MessagingInterface::kPostLoadGame:
@@ -24,11 +31,16 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 	}
 }
 
-void onSKSEInit()
+[[nodiscard]] bool onSKSEInit()
 {
-	Renderer::Install();
 	Settings::init();
 	ModSettings::init(); // init modsetting before everyone else
+	SKSE::AllocTrampoline(14 * 4);
+	if (!Renderer::Install() || !Hooks::Install() || !Hooks::IsInputDispatchInstalled()) {
+		return false;
+	}
+	WheelerCooperativeOpening::Initialize();
+	return true;
 }
 
 namespace
@@ -67,7 +79,8 @@ namespace
 		const auto previousLevel = log->level();
 		log->set_level(spdlog::level::info);
 		logger::info("{} v{} by {}"sv, Plugin::NAME, Plugin::VERSION.string(), Plugin::AUTHOR);
-		logger::info("Runtime {}"sv, a_skse->RuntimeVersion().string());
+		logger::info("Runtime {}"sv, a_skse->RuntimeVersion().string("."));
+		logger::info("CommonLibSSE-NG {} ({})"sv, DMENU_COMMONLIBSSE_NG_VERSION, DMENU_COMMONLIBSSE_NG_REVISION);
 		logger::info("Log mode: startup banner + errors only"sv);
 		log->flush();
 		log->set_level(previousLevel);
@@ -103,7 +116,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	}
 
 	const auto ver = a_skse->RuntimeVersion();
-	if (ver < SKSE::RUNTIME_SSE_1_5_39) {
+	if (!RuntimeCompatibility::IsSupported(ver)) {
 		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
 		return false;
 	}
@@ -116,10 +129,20 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 
 	v.PluginVersion(Plugin::VERSION);
 	v.PluginName(Plugin::NAME);
+	v.AuthorName(Plugin::AUTHOR);
 
-	v.UsesAddressLibrary(true);
-	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST });
-	v.HasNoStructUse(true);
+	// Explicit versions are intentional: these hooks use audited call-site offsets,
+	// so Address Library availability alone does not make future runtimes safe.
+	v.CompatibleVersions({
+		RuntimeCompatibility::SKYRIM_1_5_97,
+		RuntimeCompatibility::SKYRIM_1_6_1170,
+		RuntimeCompatibility::SKYRIM_1_7_99,
+		RuntimeCompatibility::SKYRIM_1_7_104
+	});
+	v.MinimumRequiredXSEVersion({ 2, 0, 20, 0 });
+	// The runtime list above is authoritative. Do not advertise an Address
+	// Library independence mode that this call-site-hooking plugin does not use.
+	v.versionIndependenceEx = 0;
 
 	return v;
 }();
@@ -130,14 +153,26 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	InitializeLog();
 	LogStartupBanner(a_skse);
 
+	if (!RuntimeCompatibility::IsSupported(a_skse->RuntimeVersion())) {
+		logger::critical("Unsupported Skyrim runtime {}; plugin load aborted"sv, a_skse->RuntimeVersion().string("."));
+		return false;
+	}
+
 	SKSE::Init(a_skse);
+	if (!RuntimeCompatibility::PreflightHooks()) {
+		return false;
+	}
 
 	auto messaging = SKSE::GetMessagingInterface();
-	if (!messaging->RegisterListener("SKSE", MessageHandler)) {
+	if (!messaging || !messaging->RegisterListener("SKSE", MessageHandler)) {
+		logger::critical("Failed to register the SKSE messaging listener"sv);
 		return false;
 	}
 	
-	onSKSEInit();
+	if (!onSKSEInit()) {
+		logger::critical("Hook installation failed; plugin load aborted"sv);
+		return false;
+	}
 
 	return true;
 }

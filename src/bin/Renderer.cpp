@@ -16,24 +16,10 @@
 #include "ScreenKeyboardBridge.h"
 #include "menus/Settings.h"
 #include "InputListener.h"
+#include "RuntimeCompatibility.h"
 #include "ime/IMEManager.h"
 
 #include "menus/Translator.h"
-// stole this from MaxSu's detection meter
-
-namespace stl
-{
-	using namespace SKSE::stl;
-
-	template <class T>
-	void write_thunk_call()
-	{
-		auto& trampoline = SKSE::GetTrampoline();
-		const REL::Relocation<std::uintptr_t> hook{ T::id, T::offset };
-		T::func = trampoline.write_call<5>(hook.address(), T::thunk);
-	}
-}
-
 namespace
 {
 	std::atomic<bool> g_applyMenuStateToBackends{ true };
@@ -137,9 +123,10 @@ void Renderer::D3DInitHook::thunk()
 		return;
 	}
 
-	auto* render_data = RE::BSGraphics::Renderer::GetRendererData();
-	if (!render_data) {
-		ERROR("Cannot get renderer data. Initialization failed!");
+	auto* nativeDevice = RE::BSGraphics::Renderer::GetDevice();
+	auto* nativeContext = renderer->GetRuntimeData().context;
+	if (!nativeDevice || !nativeContext) {
+		ERROR("Cannot get the D3D11 device/context. Initialization failed!");
 		return;
 	}
 
@@ -151,8 +138,8 @@ void Renderer::D3DInitHook::thunk()
 		return;
 	}
 
-	device = reinterpret_cast<ID3D11Device*>(render_data->forwarder);
-	context = reinterpret_cast<ID3D11DeviceContext*>(render_data->context);
+	device = reinterpret_cast<ID3D11Device*>(nativeDevice);
+	context = reinterpret_cast<ID3D11DeviceContext*>(nativeContext);
 
 	INFO("Initializing ImGui...");
 	ImGui::CreateContext();
@@ -374,19 +361,27 @@ void Renderer::MessageCallback(SKSE::MessagingInterface::Message* msg)  //CallBa
 
 bool Renderer::Install()
 {
+	const auto* d3dInit = RuntimeCompatibility::GetResolvedCallSite(RuntimeCompatibility::Hook::D3DInit);
+	const auto* dxgiPresent = RuntimeCompatibility::GetResolvedCallSite(RuntimeCompatibility::Hook::DXGIPresent);
+	if (!d3dInit || !dxgiPresent) {
+		ERROR("Renderer hook preflight was not completed; renderer hooks were not installed");
+		return false;
+	}
+
 	auto g_message = SKSE::GetMessagingInterface();
 	if (!g_message) {
 		ERROR("Messaging Interface Not Found!");
 		return false;
 	}
 
-	g_message->RegisterListener(MessageCallback);
+	if (!g_message->RegisterListener(MessageCallback)) {
+		ERROR("Failed to register the renderer messaging listener");
+		return false;
+	}
 
-	SKSE::AllocTrampoline(14 * 2);
-
-	stl::write_thunk_call<D3DInitHook>();
-	stl::write_thunk_call<DXGIPresentHook>();
-
+	auto& trampoline = SKSE::GetTrampoline();
+	D3DInitHook::func = trampoline.write_call<5>(d3dInit->address, D3DInitHook::thunk);
+	DXGIPresentHook::func = trampoline.write_call<5>(dxgiPresent->address, DXGIPresentHook::thunk);
 	
 	return true;
 }
@@ -432,18 +427,6 @@ float Renderer::GetResolutionScaleHeight()
 void Renderer::draw()
 {
 	const bool menuEnabled = IsEnabled();
-	//static constexpr ImGuiWindowFlags windowFlag = ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration;
-
-	
-	// resize window
-	//ImGui::SetNextWindowPos(ImVec2(0, 0));
-	//ImGui::SetNextWindowSize(ImVec2(screenSizeX, screenSizeY));
-
-
-	// Add UI elements here
-	//ImGui::Text("sizeX: %f, sizeYL %f", screenSizeX, screenSizeY);
-
-
 	IME::Manager::Get().BeginFrame(menuEnabled);
 	if (menuEnabled) {
 		if (!DMenu::initialized) {

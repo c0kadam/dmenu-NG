@@ -1,6 +1,5 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
-#include "imgui_internal.h"
 #include "imgui.h"
 #include <array>
 #include <optional>
@@ -18,7 +17,6 @@
 void DMenu::draw()
 {
 	static int lastDrawFrame = -1000;
-	static int navDebugFrames = 0;
 	const int currentFrame = ImGui::GetFrameCount();
 	const bool menuJustOpened = currentFrame != lastDrawFrame + 1;
 	lastDrawFrame = currentFrame;
@@ -85,18 +83,6 @@ void DMenu::draw()
 	const bool gamepadDpadDownPressed = ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown);
 	const bool gamepadDpadRightPressed = ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight);
 	const bool gamepadAPressed = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown);
-	if (navDebugFrames > 0 &&
-	    (gamepadL1Pressed || gamepadR1Pressed || gamepadDpadDownPressed || gamepadDpadRightPressed || gamepadAPressed)) {
-		INFO(
-			"NavDebugKeys: L1={} R1={} Down={} Right={} A={} currentTab={} requestedTab={}",
-			gamepadL1Pressed ? 1 : 0,
-			gamepadR1Pressed ? 1 : 0,
-			gamepadDpadDownPressed ? 1 : 0,
-			gamepadDpadRightPressed ? 1 : 0,
-			gamepadAPressed ? 1 : 0,
-			static_cast<int>(currentTab),
-			requestedTab.has_value() ? static_cast<int>(requestedTab.value()) : -1);
-	}
 	if (!screenKeyboardActive && gamepadL1Pressed) {
 		requestedTab = stepVisibleTab(currentTab, -1);
 	} else if (!screenKeyboardActive && gamepadR1Pressed) {
@@ -126,22 +112,6 @@ void DMenu::draw()
 		windowFlags |= ImGuiWindowFlags_NoResize;
 	}
 	ImGui::Begin("dMenu", nullptr, windowFlags);
-	if (menuJustOpened) {
-		navDebugFrames = 12;
-	}
-	if (navDebugFrames > 0) {
-		ImGuiContext* ctx = ImGui::GetCurrentContext();
-		const char* navWindowName =
-			(ctx && ctx->NavWindow && ctx->NavWindow->Name) ? ctx->NavWindow->Name : "<none>";
-		INFO(
-			"NavDebug: windowFocused={} childFocused={} navWindow='{}' navId={} currentTab={}",
-			ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) ? 1 : 0,
-			ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) ? 1 : 0,
-			navWindowName,
-			ctx ? ctx->NavId : 0,
-			static_cast<int>(currentTab));
-		navDebugFrames--;
-	}
 	const bool requestActiveTabFocus = ImGui::IsWindowAppearing() || requestedTab.has_value();
 
 	if (screenKeyboardActive) {

@@ -11,6 +11,7 @@
 
 #include "Renderer.h"
 #include "ScreenKeyboardBridge.h"
+#include "WheelerCooperativeOpening.h"
 #include "ime/IMEManager.h"
 
 #include "menus/ModSettings.h"
@@ -20,9 +21,6 @@
 static bool s_mkbModifierDown = false;
 static bool s_gamepadModifierDown = false;
 static bool s_hintBindingHeld = false;
-static bool s_lastMenuEnabled = false;
-static int s_gamepadButtonDebugBudget = 0;
-static int s_gamepadStickDebugBudget = 0;
 static constexpr std::array<ImGuiKey, 16> kTrackedGamepadKeys = {
 	ImGuiKey_GamepadDpadUp,
 	ImGuiKey_GamepadDpadDown,
@@ -321,13 +319,6 @@ static ImGuiKey ImGui_ImplWin32_VirtualKeyToImGuiKey(WPARAM wParam)
 	}
 }
 
-class CharEvent : public RE::InputEvent
-{
-public:
-	uint32_t keyCode;  // 18 (ascii code)
-};
-
-
 static enum : std::uint32_t
 {
 	kInvalid = static_cast<std::uint32_t>(-1),
@@ -510,22 +501,15 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 	auto& io = ImGui::GetIO();
 	const bool menuEnabledAtStart = Renderer::IsEnabled();
 	const bool screenKeyboardPending = ScreenKeyboardBridge::GetSingleton().IsAwaitingResult();
-	if (menuEnabledAtStart && !s_lastMenuEnabled) {
-		s_gamepadButtonDebugBudget = 64;
-		s_gamepadStickDebugBudget = 24;
-		INFO("GamepadDebug: armed while menu open (buttonBudget={}, stickBudget={})", s_gamepadButtonDebugBudget, s_gamepadStickDebugBudget);
-	}
-	s_lastMenuEnabled = menuEnabledAtStart;
 
 	for (auto event = *a_event; event; event = event->next) {
-		if (event->eventType == RE::INPUT_EVENT_TYPE::kChar) {
-			const auto codepoint = static_cast<CharEvent*>(event)->keyCode;
+		if (const auto charEvent = event->AsCharEvent()) {
+			const auto codepoint = charEvent->keyCode;
 			if (!IME::Manager::Get().ShouldSuppressInputCharacter(codepoint)) {
 				io.AddInputCharacter(codepoint);
 			}
-		} else if (event->eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
-			const auto thumb = static_cast<RE::ThumbstickEvent*>(event);
-			if (!thumb || event->device.get() != RE::INPUT_DEVICE::kGamepad) {
+		} else if (const auto thumb = event->AsThumbstickEvent()) {
+			if (thumb->GetDevice() != RE::INPUT_DEVICE::kGamepad) {
 				continue;
 			}
 
@@ -535,28 +519,17 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				continue;
 			}
 
-			if (Renderer::IsEnabled() && s_gamepadStickDebugBudget > 0) {
-				INFO(
-					"GamepadStick: stick={} x={:.3f} y={:.3f} navActive={} navVisible={}",
-					isLeftStick ? "L" : "R",
-					thumb->xValue,
-					thumb->yValue,
-					io.NavActive ? 1 : 0,
-					io.NavVisible ? 1 : 0);
-				s_gamepadStickDebugBudget--;
-			}
-
 			SubmitThumbstickAnalog(io, isLeftStick, thumb->xValue, thumb->yValue);
-		} else if (event->eventType == RE::INPUT_EVENT_TYPE::kButton) {
-			const auto button = static_cast<RE::ButtonEvent*>(event);
-			if (!button || (button->IsPressed() && !button->IsDown()))
+		} else if (const auto button = event->AsButtonEvent()) {
+			if (button->IsPressed() && !button->IsDown())
 				continue;
 
 			auto scan_code = button->GetIDCode();
+			const auto device = button->GetDevice();
 
 			using DeviceType = RE::INPUT_DEVICE;
 			std::uint32_t input = scan_code;
-			switch (button->device.get()) {
+			switch (device) {
 			case DeviceType::kMouse:
 				input += kMouseOffset;
 				break;
@@ -573,6 +546,8 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 			if (input == kInvalid) {
 				continue;
 			}
+			const bool cooperativeOpeningMatched =
+				WheelerCooperativeOpening::IsCurrentEventMatched(reinterpret_cast<std::uintptr_t>(event));
 
 			if (button->IsDown()) {
 				ModSettings::submitInput(input);
@@ -603,13 +578,15 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 			bool isMenuToggleInput = false;
 			if (!isCapturingInput && !screenKeyboardPending && button->IsDown() && !io.WantTextInput) {
 				if (isMkbMenuToggleBinding) {
-					const bool modifierOk = (Settings::key_toggle_modifier_mkb == 0) || s_mkbModifierDown;
+					const bool modifierOk =
+						(Settings::key_toggle_modifier_mkb == 0) || s_mkbModifierDown || cooperativeOpeningMatched;
 					isMenuToggleInput = true;
 					if (modifierOk) {
 						Renderer::flip();
 					}
 				} else if (isGamepadMenuToggleBinding) {
-					const bool modifierOk = (Settings::key_toggle_modifier_gamepad == 0) || s_gamepadModifierDown;
+					const bool modifierOk =
+						(Settings::key_toggle_modifier_gamepad == 0) || s_gamepadModifierDown || cooperativeOpeningMatched;
 					isMenuToggleInput = true;
 					if (modifierOk) {
 						Renderer::flip();
@@ -648,7 +625,7 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				}
 			}
 
-			if (!isCapturingInput && button->device.get() == RE::INPUT_DEVICE::kGamepad) {
+			if (!isCapturingInput && device == RE::INPUT_DEVICE::kGamepad) {
 				const bool isReservedGamepadBinding =
 					(Settings::key_toggle_dmenu_gamepad != 0 && input == Settings::key_toggle_dmenu_gamepad) ||
 					(Settings::key_toggle_hints_gamepad != 0 && input == Settings::key_toggle_hints_gamepad);
@@ -661,27 +638,7 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				}
 			}
 
-			if (button->device.get() == RE::INPUT_DEVICE::kGamepad && Renderer::IsEnabled() && s_gamepadButtonDebugBudget > 0) {
-				const ImGuiKey mappedKey = MapGamepadKeyToImGui(static_cast<RE::BSWin32GamepadDevice::Key>(scan_code));
-				const char* keyName = mappedKey != ImGuiKey_None ? ImGui::GetKeyName(mappedKey) : "None";
-				INFO(
-					"GamepadButton: scan={} input={} pressed={} down={} value={:.3f} mapped={} consume={} menuToggle={} hintToggle={} navActive={} navVisible={} wantText={}",
-					scan_code,
-					input,
-					button->IsPressed() ? 1 : 0,
-					button->IsDown() ? 1 : 0,
-					button->Value(),
-					keyName,
-					consumeBoundInput ? 1 : 0,
-					isMenuToggleBinding ? 1 : 0,
-					isHintBindingInput ? 1 : 0,
-					io.NavActive ? 1 : 0,
-					io.NavVisible ? 1 : 0,
-					io.WantTextInput ? 1 : 0);
-				s_gamepadButtonDebugBudget--;
-			}
-
-			switch (button->device.get()) {
+			switch (device) {
 			case RE::INPUT_DEVICE::kMouse:
 				if (consumeBoundInput) {
 					break;

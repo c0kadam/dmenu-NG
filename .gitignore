@@ -1,8 +1,8 @@
-!Update.ps1
-
 # CMake / build output
 /build*/
 /out/
+/dist/
+/release/
 CMakeCache.txt
 CMakeFiles/
 CMakeScripts/
@@ -29,7 +29,6 @@ CMakeUserPresets.json
 
 # Binary outputs and logs
 *.dll
-!Data/SKSE/Plugins/dmenu.dll
 *.pdb
 *.lib
 *.exp

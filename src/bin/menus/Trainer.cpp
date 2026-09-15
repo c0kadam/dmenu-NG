@@ -55,6 +55,7 @@ namespace World
 		static std::vector<RE::TESFile*> _mods;  // plugins containing weathers
 		static uint8_t _mods_i = 0;              // selected weather plugin (deprecated)
 		bool _cached = false;
+		bool _namesInitialized = false;
 
 		bool _showCurrRegionOnly = true;  // only show weather corresponding to current region
 		bool _lockWeather = false;
@@ -255,9 +256,6 @@ namespace World
 					advanceWeather(1);
 				}
 			}
-			//ImGui::SameLine();
-			//ImGui::Checkbox("Lock Weather", &_lockWeather);
-
 			// Display filtering controls
 			ImGui::Text("%s", TR("trainer_weather_flags", "Flags:"));
 
@@ -276,7 +274,13 @@ namespace World
 			if (currRegion) {
 				ImGui::Text("%s", TR("trainer_current_region", "Current Region:"));
 				ImGui::SameLine();
-				ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s", _regionNames[currRegion].c_str());
+				const auto it = _regionNames.find(currRegion);
+				const std::string baseName = it != _regionNames.end() && !it->second.empty() ?
+				                                 it->second :
+				                                 fmt::format("{:08X}", currRegion->GetFormID());
+				const char* translated = Translator::Translate(baseName);
+				ImGui::TextColored(
+					ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s", translated ? translated : baseName.c_str());
 			} else {
 				ImGui::Text("%s", TR("trainer_region_not_found", "Current region not found"));
 			}
@@ -304,7 +308,16 @@ namespace World
 
 		void init()
 		{
+			if (_namesInitialized || !Utils::IsFormEditorIDCacheInitialized()) {
+				return;
+			}
+
 			_cached = false;
+			_mods.clear();
+			_weatherNames.clear();
+			_regionNames.clear();
+			std::array<std::size_t, static_cast<std::size_t>(Utils::EditorIDSource::Count)> weatherSources{};
+			std::array<std::size_t, static_cast<std::size_t>(Utils::EditorIDSource::Count)> regionSources{};
 
 			// load list of plugins with available weathers
 			std::unordered_set<RE::TESFile*> plugins;
@@ -317,33 +330,47 @@ namespace World
 			if (!data) {
 				return;
 			}
+			_namesInitialized = true;
 
 			// load region & weather names (EditorID or hex FormID)
 			for (RE::TESWeather* weather : data->GetFormArray<RE::TESWeather>()) {
-				std::string id = Utils::getFormEditorID(weather);
-				if (id.empty()) {
-					if (auto editorID = weather->GetFormEditorID(); editorID && *editorID) {
-						id = editorID;
-					}
+				if (!weather) {
+					continue;
 				}
+				Utils::EditorIDSource source{};
+				std::string id = Utils::getFormEditorID(weather, std::addressof(source));
 				if (id.empty()) {
 					id = fmt::format("{:08X}", weather->GetFormID());
 				}
+				++weatherSources[static_cast<std::size_t>(source)];
 				_weatherNames.insert({ weather, id });
 			}
 
 			for (RE::TESRegion* region : data->GetFormArray<RE::TESRegion>()) {
-				std::string id = Utils::getFormEditorID(region);
-				if (id.empty()) {
-					if (auto editorID = region->GetFormEditorID(); editorID && *editorID) {
-						id = editorID;
-					}
+				if (!region) {
+					continue;
 				}
+				Utils::EditorIDSource source{};
+				std::string id = Utils::getFormEditorID(region, std::addressof(source));
 				if (id.empty()) {
 					id = fmt::format("{:08X}", region->GetFormID());
 				}
+				++regionSources[static_cast<std::size_t>(source)];
 				_regionNames.insert({ region, id });
 			}
+
+			logger::warn(
+				"Weather EditorID sources: direct={}, po3={}, native-map={}, hex-fallback={}"sv,
+				weatherSources[static_cast<std::size_t>(Utils::EditorIDSource::Direct)],
+				weatherSources[static_cast<std::size_t>(Utils::EditorIDSource::Po3Tweaks)],
+				weatherSources[static_cast<std::size_t>(Utils::EditorIDSource::NativeMap)],
+				weatherSources[static_cast<std::size_t>(Utils::EditorIDSource::Unavailable)]);
+			logger::warn(
+				"Region EditorID sources: direct={}, po3={}, native-map={}, hex-fallback={}"sv,
+				regionSources[static_cast<std::size_t>(Utils::EditorIDSource::Direct)],
+				regionSources[static_cast<std::size_t>(Utils::EditorIDSource::Po3Tweaks)],
+				regionSources[static_cast<std::size_t>(Utils::EditorIDSource::NativeMap)],
+				regionSources[static_cast<std::size_t>(Utils::EditorIDSource::Unavailable)]);
 		}
 	}  // namespace Weather
 
@@ -407,18 +434,3 @@ bool Trainer::isWeatherLocked()
 {
 	return World::Time::_sliderActive;
 }
-
-// deprecated code
-//if (ImGui::BeginCombo("WeatherMod", _mods[_mods_i]->GetFilename().data())) {
-//	for (int i = 0; i < _mods.size(); i++) {
-//		bool isSelected = (_mods[_mods_i] == _mods[i]);
-//		if (ImGui::Selectable(_mods[i]->GetFilename().data(), isSelected)) {
-//			_mods_i = i;
-//			_cached = false;
-//		}
-//		if (isSelected) {
-//			ImGui::SetItemDefaultFocus();
-//		}
-//	}
-//	ImGui::EndCombo();
-//}

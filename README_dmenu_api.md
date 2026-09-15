@@ -5,6 +5,12 @@ toggle, or query the menu without simulating the configured hotkey.
 
 The public ABI definition is in `src/include/dmenu_api.h`.
 
+## License
+
+The public interoperability header is separately available under the MIT
+License; see `LICENSES/dMenu-API-MIT.txt`. The implementation compiled into
+`dmenu.dll` remains covered by the main dMenu NG project license.
+
 ## SKSE messaging path
 
 Register a listener for sender `dmenu` during your plugin load. dMenu broadcasts

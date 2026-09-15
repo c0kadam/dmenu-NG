@@ -6,7 +6,7 @@
       "type": "group",
       "text": {
         "name": "Hint Media Examples",
-        "desc": "Examples for desc-only, flipbook, GIF and WebM tooltip media."
+        "desc": "Examples for description-only and flipbook tooltip media."
       },
       "entries": [
         {
@@ -45,57 +45,8 @@
               "cacheKey": "hint.flipbook.example"
             }
           }
-        },
-        {
-          "type": "checkbox",
-          "default": true,
-          "ini": {
-            "section": "HintExample",
-            "id": "gifDemo"
-          },
-          "text": {
-            "name": "GIF Demo",
-            "desc": "Hover the (?) note icon (showOn=note) to play GIF."
-          },
-          "hint": {
-            "showOn": "note",
-            "media": {
-              "type": "gif",
-              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\FavWheel\\frames\\sampleHint2.gif",
-              "maxW": 360,
-              "maxH": 220,
-              "loop": true,
-              "preload": false,
-              "cacheKey": "hint.gif.example"
-            }
-          }
-        },
-        {
-          "type": "checkbox",
-          "default": true,
-          "ini": {
-            "section": "HintExample",
-            "id": "webmDemo"
-          },
-          "text": {
-            "name": "WebM Demo",
-            "desc": "Hover either the control or (?) note (showOn=both) to play WebM."
-          },
-          "hint": {
-            "showOn": "both",
-            "media": {
-              "type": "webm",
-              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\FavWheel\\frames\\favwheel_1.webm",
-              "maxW": 360,
-              "maxH": 220,
-              "loop": true,
-              "preload": false,
-              "cacheKey": "hint.webm.example"
-            }
-          }
         }
       ]
     }
   ]
 }
-

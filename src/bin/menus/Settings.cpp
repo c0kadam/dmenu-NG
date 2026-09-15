@@ -14,6 +14,7 @@
 #include "bin/Utils.h"
 #include "bin/ime/IMEManager.h"
 #include "bin/HintMedia.h"
+#include "bin/WheelerCooperativeOpening.h"
 #include "Translator.h"
 
 namespace
@@ -301,6 +302,12 @@ namespace UI
 				ImGui::SameLine();
 				if (ImGui::Button(TR("settings_clear", "Clear"))) {
 					*value = 0;
+					if (value == &Settings::key_toggle_dmenu_mkb ||
+					    value == &Settings::key_toggle_modifier_mkb ||
+					    value == &Settings::key_toggle_dmenu_gamepad ||
+					    value == &Settings::key_toggle_modifier_gamepad) {
+						WheelerCooperativeOpening::PublishCurrentBindings();
+					}
 				}
 			}
 
@@ -470,8 +477,17 @@ void Settings::submitKeyCapture(uint32_t inputCode)
 		return;
 	}
 
-	*s_pendingKeyCapture = inputCode;
+	auto* captureTarget = s_pendingKeyCapture;
+	*captureTarget = inputCode;
+	const bool cooperativeOpeningBindingChanged =
+		captureTarget == &Settings::key_toggle_dmenu_mkb ||
+		captureTarget == &Settings::key_toggle_modifier_mkb ||
+		captureTarget == &Settings::key_toggle_dmenu_gamepad ||
+		captureTarget == &Settings::key_toggle_modifier_gamepad;
 	CancelCapture();
+	if (cooperativeOpeningBindingChanged) {
+		WheelerCooperativeOpening::PublishCurrentBindings();
+	}
 }
 
 bool Settings::IsCapturingInput()

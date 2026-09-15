@@ -4,7 +4,6 @@
 #include  <iterator>
 #define CONSOLELOG(msg) 	RE::ConsoleLog::GetSingleton()->Print(msg);
 #define PI 3.1415926535897932384626
-//TODO:clear this up a bit
 namespace RE
 {
 	enum DIFFICULTY
@@ -358,7 +357,6 @@ public:
 	static void clampDmg(float& dmg, RE::Actor* aggressor) {
 		auto a_weapon = inlineUtils::actor::getWieldingWeapon(aggressor);
 		if (a_weapon) {
-			//DEBUG("weapon to clamp damage: {}", a_weapon->GetName());
 			dmg = min(dmg, a_weapon->GetAttackDamage());
 		}
 	}

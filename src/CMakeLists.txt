@@ -65,7 +65,14 @@ set_target_properties(
 target_compile_features(
 	"${DMENU_TARGET}"
 	PRIVATE
-		cxx_std_20
+		cxx_std_23
+)
+
+target_compile_definitions(
+	"${DMENU_TARGET}"
+	PRIVATE
+		DMENU_COMMONLIBSSE_NG_VERSION="${DMENU_COMMONLIBSSE_NG_VERSION}"
+		DMENU_COMMONLIBSSE_NG_REVISION="${DMENU_COMMONLIBSSE_NG_REVISION}"
 )
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
@@ -75,8 +82,6 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 			"/sdl"	# Enable Additional Security Checks
 			"/utf-8"	# Set Source and Executable character sets to UTF-8
 			"/Zi"	# Debug Information Format
-
-			"/await"
 
 			"/permissive-"	# Standards conformance
 			"/Zc:preprocessor"	# Enable preprocessor conformance mode
@@ -103,8 +108,9 @@ target_include_directories(
 )
 
 set(SKSE_SUPPORT_XBYAK ON)
+set(SKSE_SUPPORT_PATCH_SAFETY ON)
 
-add_subdirectory("$ENV{CommonLibSSEPath_NG}" CommonLibSSE EXCLUDE_FROM_ALL)
+add_subdirectory("${CommonLibSSEPath_NG}" CommonLibSSE EXCLUDE_FROM_ALL)
 
 find_package(xbyak REQUIRED CONFIG)
 
@@ -137,6 +143,27 @@ install(
 	FILES
 		"$<TARGET_FILE:${DMENU_TARGET}>"
 	DESTINATION "SKSE/Plugins"
+	COMPONENT "main"
+)
+
+install(
+	DIRECTORY "${ROOT_DIR}/Data/SKSE/Plugins/dMenu"
+	DESTINATION "SKSE/Plugins"
+	COMPONENT "main"
+)
+
+install(
+	FILES
+		"${ROOT_DIR}/LICENSE"
+		"${ROOT_DIR}/EXCEPTIONS.md"
+		"${ROOT_DIR}/NOTICE.md"
+	DESTINATION "."
+	COMPONENT "main"
+)
+
+install(
+	DIRECTORY "${ROOT_DIR}/LICENSES/"
+	DESTINATION "LICENSES"
 	COMPONENT "main"
 )
 

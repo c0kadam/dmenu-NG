@@ -17,9 +17,6 @@ class Renderer
 		static void thunk();
 		static inline REL::Relocation<decltype(thunk)> func;
 
-		static constexpr auto id = REL::RelocationID(75595, 77226);
-		static constexpr auto offset = REL::VariantOffset(0x9, 0x275, 0x00);  // VR unknown
-
 		static inline std::atomic<bool> initialized = false;
 	};
 
@@ -27,9 +24,6 @@ class Renderer
 	{
 		static void thunk(std::uint32_t a_p1);
 		static inline REL::Relocation<decltype(thunk)> func;
-
-		static constexpr auto id = REL::RelocationID(75461, 77246);
-		static constexpr auto offset = REL::Offset(0x9);
 	};
 
 

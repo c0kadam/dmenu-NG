@@ -47,7 +47,8 @@ Data/SKSE/Plugins/dMenu/translations.txt
 ## Installation Layout
 
 Install the original dMenu first, then let dMenu NG overwrite the plugin files.
-The final layout should include:
+Release archives include the compiled plugin; the source repository does not
+track `dmenu.dll`. The installed layout should include:
 
 ```text
 Data/SKSE/Plugins/dmenu.dll
@@ -59,7 +60,8 @@ Data/SKSE/Plugins/dMenu/hints/...
 ```
 
 Keep dMenu NG below the original dMenu mod in your mod manager so this DLL takes
-priority.
+priority. The dMenu NG archive contains its DLL and the NG runtime additions
+listed above; it does not redistribute the original mod's base assets.
 
 ## External API For Mod Authors
 
@@ -80,6 +82,8 @@ dMenu_CloseMenu()
 dMenu_ToggleMenu()
 dMenu_IsMenuOpen()
 dMenu_IsReady()
+dMenu_SetMenuOpen(bool open)
+dMenu_GetApiVersion()
 dMenu_GetInterface(uint32_t requestedVersion)
 ```
 
@@ -91,15 +95,28 @@ lookup examples.
 - Visual Studio 2022 with the C++ desktop workload
 - CMake 3.22 or newer
 - vcpkg
-- CommonLibSSE-NG
-- Skyrim Script Extender (SKSE)
+- [CommonLibSSE-NG 7.2.0](https://github.com/alandtse/CommonLibSSE-NG/releases/tag/v7.2.0),
+  checked out at `7a60f4de794095d7b0f8928d1b930a52e9a7da83`
+- Address Library for SKSE Plugins with the database matching the installed
+  Skyrim executable (1.7.99 and 1.7.104 use Address Library format 5)
+
+| Skyrim runtime | Matching SKSE |
+| --- | --- |
+| 1.5.97 | 2.0.20 |
+| 1.6.1170 | 2.2.6 |
+| 1.7.99 | 2.3.0 |
+| 1.7.104 | 2.3.1 |
 
 Set these environment variables before configuring:
 
 ```powershell
-$env:VCPKG_ROOT = "C:\dev\vcpkg"
-$env:CommonLibSSEPath_NG = "C:\dev\CommonLibSSE-NG"
+$env:VCPKG_ROOT = "C:\Path\To\vcpkg"
+$env:CommonLibSSEPath_NG = "C:\Path\To\CommonLibSSE-NG"
 ```
+
+The configure step checks both the CommonLibSSE-NG version and exact Git
+revision. Supported Skyrim runtimes are 1.5.97, 1.6.1170, 1.7.99, and 1.7.104;
+other versions fail closed before any hooks are installed.
 
 ## Build
 
@@ -129,13 +146,43 @@ $env:CompiledPluginsPath = "C:\Path\To\Your\Mod"
 cmake --preset vs2022-windows -DCOPY_OUTPUT=ON
 ```
 
+## License
+
+dMenu NG is distributed under `GPL-3.0-or-later` with the CommonLibSSE-NG
+Modding Exception and GPL-3.0 Linking Exception (with Corresponding Source).
+This licensing applies because the plugin statically links CommonLibSSE-NG
+7.2.0. See [LICENSE](LICENSE), [EXCEPTIONS.md](EXCEPTIONS.md), and
+[NOTICE.md](NOTICE.md) for the complete terms and attribution.
+
+The original D7ry/dMenu source was released under MIT. Its original copyright
+and license text are preserved in
+[LICENSES/D7ry-dMenu-MIT.txt](LICENSES/D7ry-dMenu-MIT.txt). CommonLibSSE-NG
+license provenance is preserved under [LICENSES](LICENSES/).
+
+The public interoperability header `src/include/dmenu_api.h` is separately
+available under MIT so other SKSE plugins can include the ABI declaration. See
+[LICENSES/dMenu-API-MIT.txt](LICENSES/dMenu-API-MIT.txt). The API implementation
+compiled into `dmenu.dll` remains part of the GPL-licensed project.
+
+Binary distributors must provide the Corresponding Source required by these
+terms. The reproducible dependency identity used by this project is
+CommonLibSSE-NG 7.2.0 at commit
+`7a60f4de794095d7b0f8928d1b930a52e9a7da83`.
+
+Each binary release should therefore be accompanied by a source archive that
+contains the exact dMenu NG release source and build files, the exact pinned
+CommonLibSSE-NG source, and the source/build material for the non-System static
+and header-only dependencies incorporated into the DLL. Repository links,
+version numbers, and commit hashes are useful provenance and reproducibility
+metadata, but are not substitutes for the source archive.
+
 ## Credits / Permissions
 
 dMenu NG is a modified derivative of the original dMenu mod by dTry/D7ry.
 
 - dMenu by dTry/D7ry
 - GitHub: https://github.com/D7ry/dMenu
-- Licensed under the MIT License
+- Original source licensed under the MIT License
 
 This project is not affiliated with or endorsed by dTry/D7ry. All original
 credits remain with the original author and contributors.

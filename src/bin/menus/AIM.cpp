@@ -17,7 +17,7 @@
 #include "Translator.h"
 
 #include <type_traits>
-#include "RE/M/Misc.h"
+#include "RE/S/SendHUDMessage.h"
 
 inline const char* getSafeFormName(const RE::TESForm* a_form)
 {
@@ -80,18 +80,18 @@ inline void learnSpellForPlayer(RE::TESForm* a_form)
 	if (player->HasSpell(spell)) {
 		INFO("AIM: player already knows spell {:08X}", a_form->GetFormID());
 		std::string msg = fmt::format(fmt::runtime(TR("aim_notify_spell_known", "Already known spell: {}")), getSafeFormName(a_form));
-		RE::DebugNotification(msg.c_str());
+		RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 		return;
 	}
 
 	if (player->AddSpell(spell)) {
 		INFO("AIM: learned spell {:08X}", a_form->GetFormID());
 		std::string msg = fmt::format(fmt::runtime(TR("aim_notify_spell_learned", "Learned spell: {}")), getSafeFormName(a_form));
-		RE::DebugNotification(msg.c_str());
+		RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 	} else {
 		ERROR("AIM: failed to learn spell {:08X}", a_form->GetFormID());
 		std::string msg = fmt::format(fmt::runtime(TR("aim_notify_spell_failed", "Failed to learn spell: {}")), getSafeFormName(a_form));
-		RE::DebugNotification(msg.c_str());
+		RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 	}
 }
 
@@ -117,18 +117,18 @@ inline void learnShoutForPlayer(RE::TESForm* a_form)
 	if (player->HasShout(shout)) {
 		INFO("AIM: player already knows shout {:08X}", a_form->GetFormID());
 		std::string msg = fmt::format(fmt::runtime(TR("aim_notify_shout_known", "Already known shout: {}")), getSafeFormName(a_form));
-		RE::DebugNotification(msg.c_str());
+		RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 		return;
 	}
 
 	if (player->AddShout(shout)) {
 		INFO("AIM: learned shout {:08X}", a_form->GetFormID());
 		std::string msg = fmt::format(fmt::runtime(TR("aim_notify_shout_learned", "Learned shout: {}")), getSafeFormName(a_form));
-		RE::DebugNotification(msg.c_str());
+		RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 	} else {
 		ERROR("AIM: failed to learn shout {:08X}", a_form->GetFormID());
 		std::string msg = fmt::format(fmt::runtime(TR("aim_notify_shout_failed", "Failed to learn shout: {}")), getSafeFormName(a_form));
-		RE::DebugNotification(msg.c_str());
+		RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 	}
 }
 
@@ -154,7 +154,7 @@ inline void unlockWordForPlayer(RE::TESForm* a_form)
 	player->UnlockWord(word);
 	INFO("AIM: unlocked word {:08X}", a_form->GetFormID());
 	std::string msg = fmt::format(fmt::runtime(TR("aim_notify_word_unlocked", "Unlocked word: {}")), getSafeFormName(a_form));
-	RE::DebugNotification(msg.c_str());
+	RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
 }
 
 // Spawn NPCs at the player using native PlaceObjectAtMe

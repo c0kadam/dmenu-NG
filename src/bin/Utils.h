@@ -35,8 +35,20 @@ namespace Utils
 	};
 
 	using _GetFormEditorID = const char* (*)(std::uint32_t);
-	
-	std::string getFormEditorID(const RE::TESForm* a_form);
+
+	enum class EditorIDSource : std::uint8_t
+	{
+		Direct,
+		Po3Tweaks,
+		NativeMap,
+		Unavailable,
+		Count
+	};
+
+	void InitializeFormEditorIDCache();
+	bool IsFormEditorIDCacheInitialized() noexcept;
+	std::string getFormEditorID(const RE::TESForm* a_form, EditorIDSource* a_source = nullptr);
+	std::string_view GetEditorIDSourceName(EditorIDSource a_source) noexcept;
 }
 
 /*Helper class to load from a simple ini file.*/

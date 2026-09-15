@@ -213,18 +213,7 @@
             "desc": "",
             "name": ""
           },
-          "type": "group",
-          "hint": {
-            "showOn": "both",
-            "media": {
-              "type": "webm",
-              "path": "Data\\SKSE\\Plugins\\dMenu\\hints\\FavWheel\\frames\\favwheel_1.webm",
-              "maxW": 360,
-              "maxH": 220,
-              "loop": true,
-              "preload": false
-            }
-          }
+          "type": "group"
         },
         {
           "control": {
