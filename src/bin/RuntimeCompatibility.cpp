@@ -1,6 +1,9 @@
 #include "RuntimeCompatibility.h"
+#include "HookValidation.h"
 
 #include <array>
+
+extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace RuntimeCompatibility
 {
@@ -30,19 +33,21 @@ namespace RuntimeCompatibility
 			std::uint64_t seID;
 			std::uint64_t aeID;
 			std::uint64_t expectedAETargetID;
+			// Each current thunk invokes the previous same-signature CALL target.
+			Validation::ChainPolicy chainPolicy;
 		};
 
 		constexpr HookDefinition GetHookDefinition(Hook a_hook) noexcept
 		{
 			switch (a_hook) {
 			case Hook::D3DInit:
-				return { 75595, 77226, 77396 };
+				return { 75595, 77226, 77396, Validation::ChainPolicy::ExecutableChainAllowed };
 			case Hook::DXGIPresent:
-				return { 75461, 77246, 109135 };
+				return { 75461, 77246, 109135, Validation::ChainPolicy::ExecutableChainAllowed };
 			case Hook::Weather:
-				return { 25682, 26229, 26231 };
+				return { 25682, 26229, 26231, Validation::ChainPolicy::ExecutableChainAllowed };
 			case Hook::InputEventDispatch:
-				return { 67315, 68617, 68655 };
+				return { 67315, 68617, 68655, Validation::ChainPolicy::ExecutableChainAllowed };
 			default:
 				return {};
 			}
@@ -85,25 +90,6 @@ namespace RuntimeCompatibility
 
 			const auto offset = a_address - text.address();
 			return offset <= text.size() && a_size <= text.size() - offset;
-		}
-
-		[[nodiscard]] bool IsExecutableMemory(std::uintptr_t a_address) noexcept
-		{
-			MEMORY_BASIC_INFORMATION memoryInfo{};
-			if (::VirtualQuery(reinterpret_cast<const void*>(a_address), std::addressof(memoryInfo), sizeof(memoryInfo)) == 0 ||
-			    memoryInfo.State != MEM_COMMIT || (memoryInfo.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
-				return false;
-			}
-
-			switch (memoryInfo.Protect & 0xFF) {
-			case PAGE_EXECUTE:
-			case PAGE_EXECUTE_READ:
-			case PAGE_EXECUTE_READWRITE:
-			case PAGE_EXECUTE_WRITECOPY:
-				return true;
-			default:
-				return false;
-			}
 		}
 
 		template <std::size_t N>
@@ -164,31 +150,35 @@ namespace RuntimeCompatibility
 			}
 
 			const auto address = baseAddress + static_cast<std::uintptr_t>(offset);
-			if (!IsInTextSegment(address, 5)) {
+			const bool callSiteInText = IsInTextSegment(address, 5);
+			std::uint8_t opcode = 0;
+			if (callSiteInText) {
+				std::memcpy(std::addressof(opcode), reinterpret_cast<const void*>(address), sizeof(opcode));
+			}
+			const bool contextMatches = callSiteInText && opcode == 0xE8 &&
+			                            MatchesCallContext(a_hook, address, REL::Module::IsAE());
+			switch (Validation::ClassifyCallSite(callSiteInText, opcode, contextMatches)) {
+			case Validation::CallSiteResult::OutsideExecutableText:
 				logger::error("{}: resolved address 0x{:X} is outside Skyrim's executable section for runtime {}"sv,
 					hookName,
 					address,
 					a_version.string("."));
 				return std::nullopt;
-			}
-
-			std::uint8_t opcode = 0;
-			std::memcpy(std::addressof(opcode), reinterpret_cast<const void*>(address), sizeof(opcode));
-			if (opcode != 0xE8) {
+			case Validation::CallSiteResult::WrongOpcode:
 				logger::error("{}: expected CALL instruction not found at 0x{:X} for runtime {} (found 0x{:02X})"sv,
 					hookName,
 					address,
 					a_version.string("."),
 					opcode);
 				return std::nullopt;
-			}
-
-			if (!MatchesCallContext(a_hook, address, REL::Module::IsAE())) {
+			case Validation::CallSiteResult::ContextMismatch:
 				logger::error("{}: expected CALL context not found at 0x{:X} for runtime {}"sv,
 					hookName,
 					address,
 					a_version.string("."));
 				return std::nullopt;
+			case Validation::CallSiteResult::Valid:
+				break;
 			}
 
 			std::int32_t displacement = 0;
@@ -204,45 +194,82 @@ namespace RuntimeCompatibility
 
 			const auto originalTarget = static_cast<std::uintptr_t>(signedTarget);
 			const bool targetIsInSkyrim = IsInTextSegment(originalTarget, 1);
-			if (!targetIsInSkyrim) {
-				// Input dispatch is a shared hook point. If another SKSE plugin (notably
-				// Wheeler) installed first, CommonLib's write_call will safely return its
-				// executable relay so dMenu can preserve the existing call chain.
-				if (a_hook != Hook::InputEventDispatch || !IsExecutableMemory(originalTarget)) {
-					logger::error("{}: CALL target 0x{:X} is not a valid Skyrim or executable chained target for runtime {}"sv,
-						hookName,
-						originalTarget,
-						a_version.string("."));
-					return std::nullopt;
-				}
+			std::uintptr_t expectedTarget = 0;
+			bool expectedSkyrimTarget = true;
+			if (targetIsInSkyrim && REL::Module::IsAE()) {
+				expectedTarget = REL::ID(definition.expectedAETargetID).address();
+				expectedSkyrimTarget = expectedTarget != 0 && originalTarget == expectedTarget;
+			}
 
-				logger::warn("{}: preserving pre-existing executable hook chain at 0x{:X} for runtime {}"sv,
+			Validation::ExternalTargetInspection externalInspection{
+				Validation::ExecutableMemoryStatus::QueryFailed,
+				false
+			};
+			if (!targetIsInSkyrim) {
+				externalInspection = Validation::InspectExternalTarget(
+					originalTarget,
+					address,
+					reinterpret_cast<std::uintptr_t>(&__ImageBase));
+			}
+			const bool callSiteSelfTarget = originalTarget >= address && originalTarget - address < 5;
+			const Validation::TargetFacts targetFacts{
+				targetIsInSkyrim,
+				expectedSkyrimTarget,
+				externalInspection.memoryStatus == Validation::ExecutableMemoryStatus::Executable,
+				callSiteSelfTarget || externalInspection.duplicateOrSelfTarget
+			};
+			const auto targetResult = Validation::ClassifyTarget(definition.chainPolicy, targetFacts);
+			switch (targetResult) {
+			case Validation::TargetResult::UnexpectedSkyrimTarget:
+				logger::error("{}: CALL target mismatch at 0x{:X} for runtime {} (resolved 0x{:X}, expected Address Library ID {} at 0x{:X})"sv,
+					hookName,
+					address,
+					a_version.string("."),
+					originalTarget,
+					definition.expectedAETargetID,
+					expectedTarget);
+				return std::nullopt;
+			case Validation::TargetResult::ExternalTargetNotExecutable:
+				logger::error("{}: external CALL target 0x{:X} rejected for runtime {} ({})"sv,
+					hookName,
+					originalTarget,
+					a_version.string("."),
+					Validation::GetExecutableMemoryStatusName(externalInspection.memoryStatus));
+				return std::nullopt;
+			case Validation::TargetResult::ExternalChainNotAllowed:
+				logger::error("{}: external CALL target 0x{:X} is executable, but this hook does not allow chaining for runtime {}"sv,
 					hookName,
 					originalTarget,
 					a_version.string("."));
+				return std::nullopt;
+			case Validation::TargetResult::DuplicateOrSelfTarget:
+				logger::error("{}: CALL target 0x{:X} would create a duplicate or self-referential hook chain for runtime {}"sv,
+					hookName,
+					originalTarget,
+					a_version.string("."));
+				return std::nullopt;
+			case Validation::TargetResult::VanillaTargetAccepted:
+			case Validation::TargetResult::ExternalChainAccepted:
+				break;
 			}
 
-			if (targetIsInSkyrim && REL::Module::IsAE()) {
-				const auto expectedTarget = REL::ID(definition.expectedAETargetID).address();
-				if (expectedTarget == 0 || originalTarget != expectedTarget) {
-					logger::error("{}: CALL target mismatch at 0x{:X} for runtime {} (resolved 0x{:X}, expected Address Library ID {} at 0x{:X})"sv,
-						hookName,
-						address,
-						a_version.string("."),
-						originalTarget,
-						definition.expectedAETargetID,
-						expectedTarget);
-					return std::nullopt;
-				}
+			if (targetResult == Validation::TargetResult::ExternalChainAccepted) {
+				logger::warn("{}: accepted pre-existing executable hook chain for runtime {}: relocation ID {}, offset 0x{:X}, call 0x{:X} -> 0x{:X}"sv,
+					hookName,
+					a_version.string("."),
+					relocation.id(),
+					offset,
+					address,
+					originalTarget);
+			} else {
+				logger::info("{}: validated Skyrim CALL target for runtime {}: relocation ID {}, offset 0x{:X}, call 0x{:X} -> 0x{:X}"sv,
+					hookName,
+					a_version.string("."),
+					relocation.id(),
+					offset,
+					address,
+					originalTarget);
 			}
-
-			logger::info("{}: runtime {}, relocation ID {}, offset 0x{:X}, call 0x{:X} -> 0x{:X}"sv,
-				hookName,
-				a_version.string("."),
-				relocation.id(),
-				offset,
-				address,
-				originalTarget);
 			return ResolvedCallSite{ address, originalTarget };
 		}
 	}

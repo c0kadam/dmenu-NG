@@ -17,6 +17,8 @@ https://www.nexusmods.com/skyrimspecialedition/mods/166751
 ## Highlights
 
 - CommonLibSSE-NG port for modern SE/AE runtimes.
+- Strict startup callsite validation that preserves compatible pre-existing
+  SKSE hook chains.
 - Crash and safety fixes around AIM spawning, settings handling, and newer game
   versions.
 - Gamepad navigation, separate gamepad toggle/modifier bindings, and a gamepad
@@ -130,6 +132,14 @@ Build the plugin:
 
 ```powershell
 cmake --build build --config Release
+```
+
+To build and run the runtime compatibility regression tests, configure with
+`-DDMENU_BUILD_TESTS=ON`, then run:
+
+```powershell
+cmake --build build --config Release --target dmenu_runtime_compatibility_tests
+ctest --test-dir build -C Release --output-on-failure
 ```
 
 The DLL is written to:
