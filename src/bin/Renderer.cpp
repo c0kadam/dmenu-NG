@@ -380,8 +380,19 @@ bool Renderer::Install()
 	}
 
 	auto& trampoline = SKSE::GetTrampoline();
-	D3DInitHook::func = trampoline.write_call<5>(d3dInit->address, D3DInitHook::thunk);
-	DXGIPresentHook::func = trampoline.write_call<5>(dxgiPresent->address, DXGIPresentHook::thunk);
+	const auto d3dInitOriginal = trampoline.write_call<5>(d3dInit->address, D3DInitHook::thunk);
+	if (d3dInitOriginal == 0) {
+		ERROR("Failed to install D3D initialization hook");
+		return false;
+	}
+	D3DInitHook::func = d3dInitOriginal;
+
+	const auto dxgiPresentOriginal = trampoline.write_call<5>(dxgiPresent->address, DXGIPresentHook::thunk);
+	if (dxgiPresentOriginal == 0) {
+		ERROR("Failed to install DXGI present hook");
+		return false;
+	}
+	DXGIPresentHook::func = dxgiPresentOriginal;
 	
 	return true;
 }

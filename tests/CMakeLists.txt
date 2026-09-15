@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Copyright (c) 2026 C0kadam
+# See LICENSE and EXCEPTIONS.md for the project terms.
+
 add_executable(
 	dmenu_runtime_compatibility_tests
 	RuntimeCompatibilityTests.cpp
