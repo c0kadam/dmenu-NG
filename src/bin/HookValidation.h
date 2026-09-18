@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 namespace RuntimeCompatibility::Validation
@@ -57,6 +58,17 @@ namespace RuntimeCompatibility::Validation
 		ExecutableMemoryStatus memoryStatus;
 		bool duplicateOrSelfTarget;
 	};
+
+	using WeatherCallContext = std::array<std::uint8_t, 3>;
+
+	[[nodiscard]] constexpr bool MatchesWeatherCallContext(
+		bool a_isAE,
+		const WeatherCallContext& a_before,
+		const WeatherCallContext& a_after) noexcept
+	{
+		const WeatherCallContext expected{ 0x48, 0x8B, static_cast<std::uint8_t>(a_isAE ? 0xCF : 0xCE) };
+		return a_before == expected && a_after == expected;
+	}
 
 	[[nodiscard]] constexpr CallSiteResult ClassifyCallSite(
 		bool a_inExecutableText,

@@ -109,8 +109,19 @@ namespace RuntimeCompatibility
 				return MatchesBytes(a_address - 5, std::array<std::uint8_t, 5>{ 0xB9, 0x01, 0x00, 0x00, 0x00 }) &&
 			       MatchesBytes(a_address + 5, std::array<std::uint8_t, 2>{ 0x80, 0x3D });
 			case Hook::Weather:
-				return MatchesBytes(a_address - 3, std::array<std::uint8_t, 3>{ 0x48, 0x8B, 0xCF }) &&
-			       MatchesBytes(a_address + 5, std::array<std::uint8_t, 3>{ 0x48, 0x8B, 0xCF });
+				{
+					Validation::WeatherCallContext before{};
+					Validation::WeatherCallContext after{};
+					if (a_address < before.size() ||
+					    !IsInTextSegment(a_address - before.size(), before.size()) ||
+					    !IsInTextSegment(a_address + 5, after.size())) {
+						return false;
+					}
+
+					std::memcpy(before.data(), reinterpret_cast<const void*>(a_address - before.size()), before.size());
+					std::memcpy(after.data(), reinterpret_cast<const void*>(a_address + 5), after.size());
+					return Validation::MatchesWeatherCallContext(a_isAE, before, after);
+				}
 			case Hook::InputEventDispatch:
 				return MatchesBytes(a_address - 3, std::array<std::uint8_t, 3>{ 0x48, 0x8B, 0xCE }) &&
 			       MatchesBytes(a_address + 5, std::array<std::uint8_t, 3>{ 0x48, 0x8B, 0x0D });

@@ -71,6 +71,20 @@ namespace
 
 int main()
 {
+	constexpr WeatherCallContext seWeatherContext{ 0x48, 0x8B, 0xCE };
+	constexpr WeatherCallContext aeWeatherContext{ 0x48, 0x8B, 0xCF };
+	constexpr WeatherCallContext wrongWeatherContext{ 0x48, 0x8B, 0xCD };
+	Expect(MatchesWeatherCallContext(false, seWeatherContext, seWeatherContext),
+		"Weather A: verified Skyrim 1.5.97 context is accepted");
+	Expect(MatchesWeatherCallContext(true, aeWeatherContext, aeWeatherContext),
+		"Weather B: existing AE context remains accepted");
+	Expect(!MatchesWeatherCallContext(false, wrongWeatherContext, seWeatherContext),
+		"Weather C: wrong Skyrim 1.5.97 context is rejected");
+	Expect(
+		ClassifyCallSite(true, 0x90, MatchesWeatherCallContext(false, seWeatherContext, seWeatherContext)) ==
+			CallSiteResult::WrongOpcode,
+		"Weather D: wrong opcode is still rejected");
+
 	Expect(
 		ClassifyTarget(ChainPolicy::ExecutableChainAllowed, { true, true, false, false }) ==
 			TargetResult::VanillaTargetAccepted,
