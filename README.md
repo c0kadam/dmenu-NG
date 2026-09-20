@@ -203,10 +203,10 @@ xbyak, nlohmann/json, rapidcsv, rsm-binary-io, fast-cpp-csv-parser, and the
 other libraries used by the project.
 
 SimpleIME compatibility was validated with
-[SimpleIME 2.2.1](https://github.com/cyfewlp/SimpleIME) by cyfewlp. SimpleIME
+[SimpleIME 2.2.1](https://github.com/cyfewlp/SimpleIME) by cyfewlp [JamieYin101](https://www.nexusmods.com/profile/JamieYin101). SimpleIME
 is installed separately and is not bundled with or linked into dMenu NG.
 
-Thanks to [Risasre22](https://github.com/Risasre22) for the external API
+Thanks to [Risasre22](https://github.com/Risasre22) [risarei](https://www.nexusmods.com/profile/risarei) for the external API
 integration request and compatibility feedback.
 
 See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for license and attribution
