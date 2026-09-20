@@ -8,6 +8,7 @@
 #include "RuntimeCompatibility.h"
 #include "WheelerCooperativeOpening.h"
 #include "Utils.h"
+#include "ime/SimpleIMEBridge.h"
 
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 {
@@ -23,6 +24,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 		ModSettings::SendAllSettingsUpdateEvent();
 		break;
 	case SKSE::MessagingInterface::kPostLoad:
+		IME::SimpleIMEBridge::Get().DetectAfterPluginsLoaded();
 		WheelerCooperativeOpening::RetryInitializationAfterPluginsLoaded();
 		DMenuAPI::DispatchInterface();
 		break;

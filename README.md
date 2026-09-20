@@ -202,6 +202,10 @@ the authors and maintainers of CommonLibSSE-NG, Dear ImGui, SimpleIni, spdlog,
 xbyak, nlohmann/json, rapidcsv, rsm-binary-io, fast-cpp-csv-parser, and the
 other libraries used by the project.
 
+SimpleIME compatibility was validated with
+[SimpleIME 2.2.1](https://github.com/cyfewlp/SimpleIME) by cyfewlp. SimpleIME
+is installed separately and is not bundled with or linked into dMenu NG.
+
 Thanks to [Risasre22](https://github.com/Risasre22) for the external API
 integration request and compatibility feedback.
 

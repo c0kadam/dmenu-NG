@@ -13,6 +13,7 @@
 #include "ScreenKeyboardBridge.h"
 #include "WheelerCooperativeOpening.h"
 #include "ime/IMEManager.h"
+#include "ime/SimpleIMEBridge.h"
 
 #include "menus/ModSettings.h"
 #include "menus/Settings.h"
@@ -504,6 +505,11 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 
 	for (auto event = *a_event; event; event = event->next) {
 		if (const auto charEvent = event->AsCharEvent()) {
+			if (IME::SimpleIMEBridge::Get().ShouldSuppressGameCharEvent()) {
+				// SimpleIME consumes Skyrim's raw character stream while active and sends
+				// authoritative committed text through its custom Scaleform event instead.
+				continue;
+			}
 			const auto codepoint = charEvent->keyCode;
 			if (!IME::Manager::Get().ShouldSuppressInputCharacter(codepoint)) {
 				io.AddInputCharacter(codepoint);

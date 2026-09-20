@@ -4,6 +4,7 @@
 #include "imgui_stdlib.h"
 
 #include "IMEManager.h"
+#include "SimpleIMEBridge.h"
 
 namespace
 {
@@ -34,6 +35,9 @@ namespace
 
 	void RegisterLastTextItem(const char* label, bool multiline)
 	{
+		const bool active = ImGui::IsItemActive();
+		IME::SimpleIMEBridge::Get().ReportTextWidget(active);
+
 		if (!IME::Manager::Get().IsImeEnabled()) {
 			return;
 		}
@@ -43,7 +47,6 @@ namespace
 			return;
 		}
 
-		const bool active = ImGui::IsItemActive();
 		const bool focused = ImGui::IsItemFocused();
 		const bool keepAlive = IME::Manager::Get().ShouldKeepTextTargetAlive(itemId);
 		if (!active && !(focused && ImGui::GetIO().WantTextInput) && !keepAlive) {
@@ -65,7 +68,9 @@ namespace IMEWidgets
 	bool InputText(const char* label, std::string* text, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* userData)
 	{
 		if (!IME::Manager::Get().IsImeEnabled()) {
-			return ImGui::InputText(label, text, flags, callback, userData);
+			const bool changed = ImGui::InputText(label, text, flags, callback, userData);
+			RegisterLastTextItem(label, false);
+			return changed;
 		}
 
 		CallbackChainData chainData{ callback, userData, ImGui::GetID(label) };
@@ -82,7 +87,9 @@ namespace IMEWidgets
 	bool InputTextMultiline(const char* label, std::string* text, const ImVec2& size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* userData)
 	{
 		if (!IME::Manager::Get().IsImeEnabled()) {
-			return ImGui::InputTextMultiline(label, text, size, flags, callback, userData);
+			const bool changed = ImGui::InputTextMultiline(label, text, size, flags, callback, userData);
+			RegisterLastTextItem(label, true);
+			return changed;
 		}
 
 		CallbackChainData chainData{ callback, userData, ImGui::GetID(label) };
@@ -100,7 +107,9 @@ namespace IMEWidgets
 	bool InputTextWithHint(const char* label, const char* hint, std::string* text, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* userData)
 	{
 		if (!IME::Manager::Get().IsImeEnabled()) {
-			return ImGui::InputTextWithHint(label, hint, text, flags, callback, userData);
+			const bool changed = ImGui::InputTextWithHint(label, hint, text, flags, callback, userData);
+			RegisterLastTextItem(label, false);
+			return changed;
 		}
 
 		CallbackChainData chainData{ callback, userData, ImGui::GetID(label) };
@@ -118,7 +127,9 @@ namespace IMEWidgets
 	bool InputText(const char* label, char* buffer, std::size_t bufferSize, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* userData)
 	{
 		if (!IME::Manager::Get().IsImeEnabled()) {
-			return ImGui::InputText(label, buffer, bufferSize, flags, callback, userData);
+			const bool changed = ImGui::InputText(label, buffer, bufferSize, flags, callback, userData);
+			RegisterLastTextItem(label, false);
+			return changed;
 		}
 
 		CallbackChainData chainData{ callback, userData, ImGui::GetID(label) };
@@ -136,7 +147,9 @@ namespace IMEWidgets
 	bool InputTextMultiline(const char* label, char* buffer, std::size_t bufferSize, const ImVec2& size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* userData)
 	{
 		if (!IME::Manager::Get().IsImeEnabled()) {
-			return ImGui::InputTextMultiline(label, buffer, bufferSize, size, flags, callback, userData);
+			const bool changed = ImGui::InputTextMultiline(label, buffer, bufferSize, size, flags, callback, userData);
+			RegisterLastTextItem(label, true);
+			return changed;
 		}
 
 		CallbackChainData chainData{ callback, userData, ImGui::GetID(label) };
@@ -154,10 +167,6 @@ namespace IMEWidgets
 
 	bool TextFilter(const char* label, ImGuiTextFilter& filter, float width)
 	{
-		if (!IME::Manager::Get().IsImeEnabled()) {
-			return filter.Draw(label, width);
-		}
-
 		if (width != 0.0f) {
 			ImGui::SetNextItemWidth(width);
 		}

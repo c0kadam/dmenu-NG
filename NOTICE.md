@@ -36,6 +36,16 @@ available under the MIT License to support external plugin integration. Its
 license is preserved in `LICENSES/dMenu-API-MIT.txt`. The DLL-side API
 implementation is part of the GPL-licensed combined work described above.
 
+## SimpleIME Compatibility
+
+dMenu NG supports interoperability with
+[SimpleIME](https://github.com/cyfewlp/SimpleIME) by cyfewlp. Compatibility was
+validated with SimpleIME 2.2.1, which is distributed under the MIT License. A
+copy of its license is preserved in `LICENSES/SimpleIME-MIT.txt`.
+
+SimpleIME is not bundled with dMenu NG and is not linked into `dmenu.dll`. It
+must be installed separately by users who want to use this compatibility path.
+
 ## CommonLibSSE-NG
 
 dMenu NG statically links CommonLibSSE-NG using this pinned source revision:
@@ -79,6 +89,7 @@ under their respective upstream licenses:
 | rsm-binary-io | MIT |
 | DirectXMath | MIT |
 | DirectXTK | MIT |
+| Microsoft Detours | MIT |
 | xbyak | BSD-3-Clause |
 | rapidcsv | BSD-3-Clause |
 | fast-cpp-csv-parser | BSD-3-Clause |

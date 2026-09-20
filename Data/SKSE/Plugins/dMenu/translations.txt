@@ -31,8 +31,11 @@ settings_toggle_key_gamepad = Toggle (Gamepad)
 settings_modifier_gamepad = Modifier (Gamepad)
 settings_hint_toggle_gamepad = Hints Show/Hide (Gamepad)
 settings_ime_section = IME
-settings_enable_ime = Enable IME Support
+settings_enable_ime = Enable Built-in IME Support
 settings_ime_overlay = Show IME Composition Overlay
+settings_simpleime_detected = SimpleIME detected.
+settings_simpleime_active = External IME input is active.
+settings_simpleime_builtin_disabled = dMenu built-in IME is disabled while SimpleIME is active.
 
 ; --- ADD ITEM MENU ---
 aim_mod_filter = Mod Name

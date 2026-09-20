@@ -118,6 +118,15 @@ find_package(imgui REQUIRED)
 
 find_package(nlohmann_json REQUIRED)
 
+find_path(DETOURS_INCLUDE_DIRS "detours/detours.h" REQUIRED)
+find_library(DETOURS_LIBRARY detours REQUIRED)
+
+target_include_directories(
+	"${DMENU_TARGET}"
+	SYSTEM PRIVATE
+		${DETOURS_INCLUDE_DIRS}
+)
+
 target_link_libraries(
 	"${DMENU_TARGET}"
 	PRIVATE
@@ -125,8 +134,10 @@ target_link_libraries(
 		xbyak::xbyak
 		imgui::imgui
 		nlohmann_json::nlohmann_json
+		${DETOURS_LIBRARY}
 		imm32
 		ole32
+		version
 		windowscodecs
 		mfplat
 		mfreadwrite

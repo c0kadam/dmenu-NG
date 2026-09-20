@@ -59,15 +59,27 @@ namespace IME
 			bool HasVisibleItems() const;
 		};
 
+		struct PositionCache
+		{
+			bool valid{ false };
+			HIMC imeContext{ nullptr };
+			ImGuiID widgetId{ 0 };
+			POINT compositionPoint{};
+			RECT candidateRect{};
+
+			void Invalidate() noexcept;
+		};
+
 		Manager() = default;
 
 		bool HasImeMessageInterest() const;
 		bool IsNativeImeModeActive() const;
 		bool ShouldPreemptInputCharacter(std::uint32_t codepoint) const;
+		void InvalidatePositionCache() noexcept;
 		void UpdateCandidateList(HIMC imeContext);
 		bool ProcessCompositionMessage(HWND hwnd, LPARAM compositionFlags);
 		void QueueCommittedText(std::wstring_view text);
-		void UpdateCompositionWindow();
+		void UpdateCompositionWindow(bool force = false);
 		void DrawCompositionOverlay();
 		void CancelComposition();
 
@@ -76,8 +88,7 @@ namespace IME
 		bool compositionActive_{ false };
 		bool candidateOpen_{ false };
 		int frameNumber_{ -1 };
-		bool reopenImeOnNextTarget_{ false };
-		bool imeSessionActive_{ false };
+		PositionCache positionCache_;
 
 		Context activeContext_;
 		PendingCommit pendingCommit_;

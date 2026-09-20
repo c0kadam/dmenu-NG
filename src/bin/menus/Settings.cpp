@@ -13,6 +13,7 @@
 #include "ModSettings.h"
 #include "bin/Utils.h"
 #include "bin/ime/IMEManager.h"
+#include "bin/ime/SimpleIMEBridge.h"
 #include "bin/HintMedia.h"
 #include "bin/WheelerCooperativeOpening.h"
 #include "Translator.h"
@@ -384,7 +385,19 @@ namespace UI
 
 		ImGui::Separator();
 		ImGui::Text("%s", TR("settings_ime_section", "IME"));
-		if (ImGui::Checkbox(TR("settings_enable_ime", "Enable IME Support"), &Settings::enable_ime_support)) {
+		auto& simpleIME = IME::SimpleIMEBridge::Get();
+		if (simpleIME.IsActive()) {
+			ImGui::TextWrapped("%s", TR("settings_simpleime_detected", "SimpleIME detected."));
+			ImGui::TextWrapped("%s", TR("settings_simpleime_active", "External IME input is active."));
+			ImGui::TextWrapped(
+				"%s",
+				TR("settings_simpleime_builtin_disabled", "dMenu built-in IME is disabled while SimpleIME is active."));
+		} else if (simpleIME.IsDetected() && simpleIME.GetState() == IME::SimpleIMEBridge::State::Unavailable) {
+			ImGui::TextWrapped("%s", simpleIME.GetStatusMessage().c_str());
+		}
+
+		ImGui::BeginDisabled(simpleIME.IsActive());
+		if (ImGui::Checkbox(TR("settings_enable_ime", "Enable Built-in IME Support"), &Settings::enable_ime_support)) {
 			if (Settings::ime_debug_log) {
 				INFO("IME: {}", Settings::enable_ime_support ? "enabled" : "disabled");
 			}
@@ -392,8 +405,9 @@ namespace UI
 				IME::Manager::Get().Reset("settings disabled");
 			}
 		}
+		ImGui::EndDisabled();
 
-		ImGui::BeginDisabled(!Settings::enable_ime_support);
+		ImGui::BeginDisabled(!Settings::enable_ime_support || simpleIME.IsActive());
 		ImGui::Checkbox(
 			TR("settings_ime_overlay", "Show IME Composition Overlay"),
 			&Settings::show_ime_composition_overlay);

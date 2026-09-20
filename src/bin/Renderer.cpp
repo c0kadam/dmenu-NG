@@ -18,6 +18,7 @@
 #include "InputListener.h"
 #include "RuntimeCompatibility.h"
 #include "ime/IMEManager.h"
+#include "ime/SimpleIMEBridge.h"
 
 #include "menus/Translator.h"
 namespace
@@ -40,6 +41,7 @@ namespace
 
 		const bool enabled = Renderer::IsEnabled();
 		IME::Manager::Get().SetMenuEnabled(enabled);
+		IME::SimpleIMEBridge::Get().SetMenuEnabled(enabled);
 		ImGui::GetIO().MouseDrawCursor = enabled;
 	}
 }
@@ -51,6 +53,10 @@ LRESULT Renderer::WndProcHook::thunk(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM
 	LRESULT imeResult = 0;
 	if (IME::Manager::Get().HandleWndProc(hWnd, uMsg, wParam, lParam, imeResult)) {
 		return imeResult;
+	}
+
+	if (uMsg == WM_ACTIVATEAPP) {
+		IME::SimpleIMEBridge::Get().OnApplicationActivationChanged(wParam != FALSE);
 	}
 
 	if (uMsg == WM_KILLFOCUS || (uMsg == WM_ACTIVATEAPP && !wParam)) {
@@ -328,6 +334,9 @@ void Renderer::DXGIPresentHook::thunk(std::uint32_t a_p1)
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	InputListener::ApplyBlockedImGuiGamepadKeys();
+	IME::SimpleIMEBridge::Get().PrepareFrame(
+		IsEnabled(),
+		ScreenKeyboardBridge::GetSingleton().IsAwaitingResult());
 	ImGui::NewFrame();
 	ApplyMenuStateToBackends();
 	HintMediaManager::Get().Tick(ImGui::GetIO().DeltaTime);
@@ -438,6 +447,7 @@ float Renderer::GetResolutionScaleHeight()
 void Renderer::draw()
 {
 	const bool menuEnabled = IsEnabled();
+	const bool screenKeyboardActiveAtFrameStart = ScreenKeyboardBridge::GetSingleton().IsAwaitingResult();
 	IME::Manager::Get().BeginFrame(menuEnabled);
 	if (menuEnabled) {
 		if (!DMenu::initialized) {
@@ -450,6 +460,12 @@ void Renderer::draw()
 		DMenu::draw();
 		ScreenKeyboardBridge::GetSingleton().Draw();
 	}
+	const bool screenKeyboardActive =
+		screenKeyboardActiveAtFrameStart || ScreenKeyboardBridge::GetSingleton().IsAwaitingResult();
+	IME::SimpleIMEBridge::Get().UpdateTextInputState(
+		menuEnabled,
+		ImGui::GetIO().WantTextInput,
+		screenKeyboardActive);
 	IME::Manager::Get().EndFrame();
 
 }

@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "UtfUtils.h"
+#include "SimpleIMEBridge.h"
 #include "bin/menus/Settings.h"
 
 #define IME_LOG(...)            \
@@ -93,6 +94,15 @@ namespace IME
 		return !items.empty();
 	}
 
+	void Manager::PositionCache::Invalidate() noexcept
+	{
+		valid = false;
+		imeContext = nullptr;
+		widgetId = 0;
+		compositionPoint = {};
+		candidateRect = {};
+	}
+
 	void Manager::Initialize(HWND hwnd)
 	{
 		hwnd_ = hwnd;
@@ -141,8 +151,6 @@ namespace IME
 			IME_LOG("IME: reset ({})", reason);
 		}
 
-		reopenImeOnNextTarget_ = false;
-		imeSessionActive_ = false;
 		activeContext_.Clear();
 		pendingCommit_.ClearAll();
 		candidateState_.Clear();
@@ -150,6 +158,7 @@ namespace IME
 		compositionUtf8_.clear();
 		compositionActive_ = false;
 		candidateOpen_ = false;
+		InvalidatePositionCache();
 	}
 
 	bool Manager::HandleWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result)
@@ -167,13 +176,17 @@ namespace IME
 				Reset("application deactivated");
 			}
 			return false;
+		case WM_INPUTLANGCHANGE:
+			InvalidatePositionCache();
+			return false;
 		case WM_IME_STARTCOMPOSITION:
 			if (!HasImeMessageInterest()) {
 				return false;
 			}
 			compositionActive_ = true;
 			candidateOpen_ = false;
-			UpdateCompositionWindow();
+			InvalidatePositionCache();
+			UpdateCompositionWindow(true);
 			IME_LOG("IME: composition start target={} label='{}'", activeContext_.widgetId, activeContext_.label);
 			return false;
 		case WM_IME_COMPOSITION:
@@ -192,6 +205,7 @@ namespace IME
 			candidateOpen_ = false;
 			compositionWide_.clear();
 			compositionUtf8_.clear();
+			InvalidatePositionCache();
 			IME_LOG("IME: composition end");
 			return false;
 		case WM_IME_NOTIFY:
@@ -201,7 +215,6 @@ namespace IME
 			switch (wParam) {
 			case IMN_OPENCANDIDATE:
 			case IMN_CHANGECANDIDATE:
-			case IMN_SETCANDIDATEPOS:
 			{
 				const bool wasCandidateOpen = candidateOpen_;
 				candidateOpen_ = true;
@@ -217,6 +230,9 @@ namespace IME
 				}
 				break;
 			}
+			case IMN_SETCANDIDATEPOS:
+				// Position updates do not prove that a candidate list is open.
+				break;
 			case IMN_CLOSECANDIDATE:
 				candidateOpen_ = false;
 				candidateState_.Clear();
@@ -227,8 +243,11 @@ namespace IME
 			}
 			return false;
 		case WM_IME_SETCONTEXT:
+			if (!wParam) {
+				InvalidatePositionCache();
+			}
 			if (HasImeMessageInterest()) {
-				UpdateCompositionWindow();
+				UpdateCompositionWindow(wParam != FALSE);
 			}
 			return false;
 		case WM_CHAR:
@@ -262,9 +281,9 @@ namespace IME
 		if (!menuEnabled_ || !IsImeEnabled() || widgetId == 0) {
 			return;
 		}
-		imeSessionActive_ = true;
-
-		if (activeContext_.widgetId != widgetId) {
+		const bool targetChanged = activeContext_.widgetId != widgetId;
+		if (targetChanged) {
+			InvalidatePositionCache();
 			IME_LOG("IME: target registered id={} label='{}'", widgetId, label);
 		}
 
@@ -366,7 +385,7 @@ namespace IME
 
 	bool Manager::IsImeEnabled() const
 	{
-		return Settings::enable_ime_support;
+		return Settings::enable_ime_support && !SimpleIMEBridge::Get().IsActive();
 	}
 
 	bool Manager::HasActiveTextTarget() const
@@ -413,6 +432,11 @@ namespace IME
 
 		return (codepoint >= 'a' && codepoint <= 'z') ||
 		       (codepoint >= 'A' && codepoint <= 'Z');
+	}
+
+	void Manager::InvalidatePositionCache() noexcept
+	{
+		positionCache_.Invalidate();
 	}
 
 	void Manager::UpdateCandidateList(HIMC imeContext)
@@ -537,7 +561,7 @@ namespace IME
 			pendingCommit_.ansiFallbackCount);
 	}
 
-	void Manager::UpdateCompositionWindow()
+	void Manager::UpdateCompositionWindow(bool force)
 	{
 		if (!menuEnabled_ || !IsImeEnabled() || hwnd_ == nullptr || !activeContext_.IsValid()) {
 			return;
@@ -553,6 +577,34 @@ namespace IME
 			static_cast<LONG>(anchor.x),
 			static_cast<LONG>(anchor.y)
 		};
+		const RECT candidateRect = {
+			static_cast<LONG>(activeContext_.rect.Min.x),
+			static_cast<LONG>(activeContext_.rect.Min.y),
+			static_cast<LONG>(activeContext_.rect.Max.x),
+			static_cast<LONG>(activeContext_.rect.Max.y)
+		};
+		const bool positionUnchanged =
+			positionCache_.valid &&
+			positionCache_.imeContext == imeContext &&
+			positionCache_.widgetId == activeContext_.widgetId &&
+			positionCache_.compositionPoint.x == point.x &&
+			positionCache_.compositionPoint.y == point.y &&
+			positionCache_.candidateRect.left == candidateRect.left &&
+			positionCache_.candidateRect.top == candidateRect.top &&
+			positionCache_.candidateRect.right == candidateRect.right &&
+			positionCache_.candidateRect.bottom == candidateRect.bottom;
+		if (!force && positionUnchanged) {
+			ImmReleaseContext(hwnd_, imeContext);
+			return;
+		}
+
+		// Publish the attempted values before calling IMM because those calls may
+		// synchronously emit positioning notifications back through the WndProc.
+		positionCache_.valid = true;
+		positionCache_.imeContext = imeContext;
+		positionCache_.widgetId = activeContext_.widgetId;
+		positionCache_.compositionPoint = point;
+		positionCache_.candidateRect = candidateRect;
 
 		COMPOSITIONFORM compositionForm{};
 		compositionForm.dwStyle = CFS_FORCE_POSITION;
@@ -563,12 +615,7 @@ namespace IME
 		candidateForm.dwIndex = 0;
 		candidateForm.dwStyle = CFS_EXCLUDE;
 		candidateForm.ptCurrentPos = point;
-		candidateForm.rcArea = RECT{
-			static_cast<LONG>(activeContext_.rect.Min.x),
-			static_cast<LONG>(activeContext_.rect.Min.y),
-			static_cast<LONG>(activeContext_.rect.Max.x),
-			static_cast<LONG>(activeContext_.rect.Max.y)
-		};
+		candidateForm.rcArea = candidateRect;
 		ImmSetCandidateWindow(imeContext, &candidateForm);
 
 		ImmReleaseContext(hwnd_, imeContext);
