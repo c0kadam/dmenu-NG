@@ -26,7 +26,12 @@ namespace
 		}
 
 		void Draw() override
-		{}
+		{
+			FUCK::Checkbox("Frontend widget test", &widgetTest_);
+		}
+
+	private:
+		bool widgetTest_{ false };
 	};
 }
 
