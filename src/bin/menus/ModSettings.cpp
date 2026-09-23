@@ -885,6 +885,11 @@ void ModSettings::SendAllSettingsUpdateEvent()
 	}
 }
 
+void ModSettings::MarkIniDirty(mod_setting* mod)
+{
+	ini_dirty_mods.insert(mod);
+}
+
 void ModSettings::FlushIniDirtyMods()
 {
 	for (auto& mod : ini_dirty_mods) {
@@ -1888,7 +1893,7 @@ void ModSettings::show_entry_impl(entry_base* entry, mod_setting* mod, float wid
 		ImGui::PopStyleColor();
 	}
 	if (edited) {
-		ini_dirty_mods.insert(mod);
+		MarkIniDirty(mod);
 	}
 	ImGui::PopID();
 }

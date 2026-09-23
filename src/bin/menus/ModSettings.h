@@ -336,6 +336,14 @@ public:
 	
 	/* Load settings config from .json files and saved settings from .ini files*/
 	static void init();
+
+	// Mark a user settings page for the existing INI save/callback path after
+	// one of its parsed setting values changes.
+	static void MarkIniDirty(mod_setting* mod);
+
+	// Persist every dirty user settings page through the existing INI, callback,
+	// and update-event sequence.
+	static void FlushIniDirtyMods();
 	
 	private:
 	/* Load a single mod from .json file*/
@@ -363,8 +371,7 @@ public:
 
 	static void insert_game_setting(mod_setting* mod);
 
-	// internal helpers for flushing dirty mods
-	static void FlushIniDirtyMods();
+	// internal helper for flushing dirty JSON descriptors
 	static void FlushJsonDirtyMods();
 
 public:
