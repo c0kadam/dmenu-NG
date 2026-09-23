@@ -46,6 +46,17 @@ copy of its license is preserved in `LICENSES/SimpleIME-MIT.txt`.
 SimpleIME is not bundled with dMenu NG and is not linked into `dmenu.dll`. It
 must be installed separately by users who want to use this compatibility path.
 
+## FLICK Public API
+
+dMenu NG vendors the unmodified public FLICK API header at
+`src/include/lib/FUCK_API.h`, copied from
+[Fuzzlesz/FUCK](https://github.com/Fuzzlesz/FUCK) API version 3. It is covered
+by the MIT License, Copyright (c) 2023/2025 powerofthree/fuzzles; the preserved
+license text is in `LICENSES/FLICK-MIT.txt`.
+
+The header performs runtime discovery of `FUCK.dll`. FLICK itself is not
+bundled with dMenu NG and is not linked into `dmenu.dll`.
+
 ## CommonLibSSE-NG
 
 dMenu NG statically links CommonLibSSE-NG using this pinned source revision:

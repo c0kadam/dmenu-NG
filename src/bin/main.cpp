@@ -2,6 +2,7 @@
 #include "InputListener.h"
 #include "Hooks.h"
 #include "DMenuAPI.h"
+#include "integrations/FlickIntegration.h"
 #include "menus/ModSettings.h"
 #include "menus/Settings.h"
 #include "menus/Trainer.h"
@@ -26,6 +27,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 	case SKSE::MessagingInterface::kPostLoad:
 		IME::SimpleIMEBridge::Get().DetectAfterPluginsLoaded();
 		WheelerCooperativeOpening::RetryInitializationAfterPluginsLoaded();
+		FlickIntegration::InitializeAfterPluginsLoaded();
 		DMenuAPI::DispatchInterface();
 		break;
 	case SKSE::MessagingInterface::kPostLoadGame:
