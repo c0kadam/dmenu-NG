@@ -1,6 +1,7 @@
 #include "PCH.h"
 
 #include "FlickIntegration.h"
+#include "../menus/ModSettings.h"
 
 // The current FLICK public header also exposes helpers for a newer ImGui API.
 // Keep its vendored copy unchanged while making those unused inline helpers
@@ -27,6 +28,10 @@ namespace
 
 		void Draw() override
 		{
+			FUCK::SeparatorText("dMenu pages");
+			ModSettings::ForEachLoadedPageName([](std::string_view pageName) {
+				FUCK::TextUnformatted(pageName.data(), pageName.data() + pageName.size());
+			});
 			FUCK::Checkbox("Frontend widget test", &widgetTest_);
 		}
 

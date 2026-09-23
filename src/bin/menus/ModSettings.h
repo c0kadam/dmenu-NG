@@ -3,6 +3,7 @@
 #include "PCH.h"
 #include <unordered_set>
 #include <optional>
+#include <string_view>
 #include "Translator.h"
 #include "imgui.h"
 #include "nlohmann/json.hpp"
@@ -336,6 +337,8 @@ public:
 	
 	/* Load settings config from .json files and saved settings from .ini files*/
 	static void init();
+
+	static void ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback);
 
 	// Mark a user settings page for the existing INI save/callback path after
 	// one of its parsed setting values changes.

@@ -2292,6 +2292,19 @@ void ModSettings::init()
 	INFO("Mod settings initialized");
 }
 
+void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback)
+{
+	if (!a_callback) {
+		return;
+	}
+
+	for (const auto* mod : mods) {
+		if (mod) {
+			a_callback(mod->name);
+		}
+	}
+}
+
 ModSettings::entry_base* ModSettings::load_json_non_group(nlohmann::json& json)
 {
 	entry_base* e = nullptr;
