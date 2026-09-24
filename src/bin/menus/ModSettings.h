@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <unordered_set>
 #include <optional>
+#include <span>
 #include <string_view>
 #include "Translator.h"
 #include "imgui.h"
@@ -21,6 +22,7 @@ class ModSettings
 
 public:
 	static inline setting_keymap* keyMapListening = nullptr;
+	static void ObserveKeymapCaptureInput(uint32_t id, bool isDown);
 	static void submitInput(uint32_t id);
 	static void ToggleHintsVisibility();
 	static bool AreHintsHidden();
@@ -384,6 +386,120 @@ public:
 		bool editCompleted = false;
 	};
 
+	struct DropdownVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		std::span<const std::string> options;
+		std::size_t groupDepth;
+		int selectedIndex;
+		bool enabled;
+	};
+
+	struct TextboxVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		std::string_view value;
+		std::size_t groupDepth;
+		bool enabled;
+	};
+
+	struct TextboxUpdate
+	{
+		std::optional<std::string> value = std::nullopt;
+		bool editCompleted = false;
+	};
+
+	struct Rgba
+	{
+		float red;
+		float green;
+		float blue;
+		float alpha;
+	};
+
+	struct TextVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		Rgba color;
+		std::size_t groupDepth;
+		bool enabled;
+	};
+
+	struct ColorVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		Rgba value;
+		std::size_t groupDepth;
+		bool enabled;
+	};
+
+	struct ColorUpdate
+	{
+		std::optional<Rgba> value = std::nullopt;
+		bool editCompleted = false;
+	};
+
+	struct KeymapVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		const char* bindingLabel;
+		std::size_t groupDepth;
+		bool capturing;
+		bool enabled;
+	};
+
+	enum class KeymapAction
+	{
+		None,
+		BeginCapture,
+		Unmap
+	};
+
+	struct ButtonVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		std::size_t groupDepth;
+		bool enabled;
+	};
+
+	struct PageSettingsCallbacks
+	{
+		std::function<bool(const GroupVisit&)> beginGroup;
+		std::function<void(const GroupVisit&)> endGroup;
+		std::function<std::optional<bool>(const CheckboxVisit&)> checkbox;
+		std::function<SliderUpdate(const SliderVisit&)> slider;
+		std::function<std::optional<int>(const DropdownVisit&)> dropdown;
+		std::function<TextboxUpdate(const TextboxVisit&)> textbox;
+		std::function<void(const TextVisit&)> text;
+		std::function<ColorUpdate(const ColorVisit&)> color;
+		std::function<KeymapAction(const KeymapVisit&)> keymap;
+		std::function<bool(const ButtonVisit&)> button;
+	};
+
 	static void show(); // called by imgui per tick
 	
 	/* Load settings config from .json files and saved settings from .ini files*/
@@ -396,10 +512,10 @@ public:
 	// Returns true when an accepted edit completed during the visit.
 	static bool VisitPageSettings(
 		const void* a_pageIdentity,
-		const std::function<bool(const GroupVisit&)>& a_beginGroup,
-		const std::function<void(const GroupVisit&)>& a_endGroup,
-		const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback,
-		const std::function<SliderUpdate(const SliderVisit&)>& a_sliderCallback);
+		const PageSettingsCallbacks& a_callbacks);
+
+	static bool IsKeymapCapturing();
+	static bool IsExternalKeymapCaptureActive();
 
 	// Visits parsed checkbox and slider settings in page and source order.
 	// Returned pages contain an accepted edit that has completed and can be
@@ -450,10 +566,11 @@ public:
 		bool enabled,
 		std::size_t groupDepth,
 		std::vector<mod_setting*>& changedMods,
-		const std::function<bool(const GroupVisit&)>& beginGroup,
-		const std::function<void(const GroupVisit&)>& endGroup,
-		const std::function<std::optional<bool>(const CheckboxVisit&)>& checkboxCallback,
-		const std::function<SliderUpdate(const SliderVisit&)>& sliderCallback);
+		const PageSettingsCallbacks& callbacks);
+	static bool has_visible_renderable_entry(
+		const std::vector<entry_base*>& entries,
+		bool enabled,
+		const PageSettingsCallbacks& callbacks);
 
 
 	static void load_ini(mod_setting* mod);

@@ -527,9 +527,6 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 
 			SubmitThumbstickAnalog(io, isLeftStick, thumb->xValue, thumb->yValue);
 		} else if (const auto button = event->AsButtonEvent()) {
-			if (button->IsPressed() && !button->IsDown())
-				continue;
-
 			auto scan_code = button->GetIDCode();
 			const auto device = button->GetDevice();
 
@@ -552,9 +549,17 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 			if (input == kInvalid) {
 				continue;
 			}
+			if (button->IsDown()) {
+				ModSettings::ObserveKeymapCaptureInput(input, true);
+			} else if (!button->IsPressed()) {
+				ModSettings::ObserveKeymapCaptureInput(input, false);
+			} else {
+				continue;
+			}
 			const bool cooperativeOpeningMatched =
 				WheelerCooperativeOpening::IsCurrentEventMatched(reinterpret_cast<std::uintptr_t>(event));
 
+			const bool wasCapturingExternalKeymap = ModSettings::IsExternalKeymapCaptureActive();
 			if (button->IsDown()) {
 				ModSettings::submitInput(input);
 			}
@@ -565,7 +570,7 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				Settings::submitKeyCapture(input);
 			}
 
-			const bool isCapturingInput = wasCapturingInput;
+			const bool isCapturingInput = wasCapturingInput || wasCapturingExternalKeymap;
 
 			if (Settings::key_toggle_modifier_mkb != 0 && input == Settings::key_toggle_modifier_mkb) {
 				s_mkbModifierDown = button->IsPressed();
@@ -600,17 +605,17 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				}
 			}
 
-			bool consumeBoundInput = isMenuToggleBinding;
+			const bool isHintBindingInput =
+				Settings::key_toggle_hints_gamepad != 0 &&
+				input == Settings::key_toggle_hints_gamepad;
+
+			bool consumeBoundInput = isMenuToggleBinding || (wasCapturingExternalKeymap && isHintBindingInput);
 			if (screenKeyboardPending && isMenuToggleBinding) {
 				if (button->IsDown()) {
 					ScreenKeyboardBridge::GetSingleton().CancelActiveRequest();
 				}
 				consumeBoundInput = true;
 			}
-			const bool isHintBindingInput =
-				Settings::key_toggle_hints_gamepad != 0 &&
-				input == Settings::key_toggle_hints_gamepad;
-
 			if (isHintBindingInput && !button->IsPressed()) {
 				s_hintBindingHeld = false;
 				INFO("HintKey released (input={}, scan={}, down={})", input, scan_code, button->IsDown() ? 1 : 0);
@@ -631,7 +636,7 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				}
 			}
 
-			if (!isCapturingInput && device == RE::INPUT_DEVICE::kGamepad) {
+			if ((!isCapturingInput || wasCapturingExternalKeymap) && device == RE::INPUT_DEVICE::kGamepad) {
 				const bool isReservedGamepadBinding =
 					(Settings::key_toggle_dmenu_gamepad != 0 && input == Settings::key_toggle_dmenu_gamepad) ||
 					(Settings::key_toggle_hints_gamepad != 0 && input == Settings::key_toggle_hints_gamepad);

@@ -69,7 +69,12 @@ namespace
 	static ImVec2 g_pinnedMediaAnchor(0.0f, 0.0f);
 	static double g_pinnedMediaCloseAt = 0.0;
 	static std::set<uint32_t> g_keyMapIgnoredInputs;
+	static std::set<uint32_t> g_inputsCurrentlyDown;
+	static std::optional<uint32_t> g_mostRecentInputDown;
+	static std::optional<uint32_t> g_externalKeyMapIgnoredInput;
 	static int g_keyMapIgnoreUntilFrame = -1;
+	static ModSettings::mod_setting* g_keyMapCaptureMod = nullptr;
+	static bool g_keyMapCaptureCommitsImmediately = false;
 
 	void ClearPinnedMediaHint()
 	{
@@ -80,6 +85,9 @@ namespace
 	void BeginKeyMapCapture(ModSettings::setting_keymap* keymap)
 	{
 		ModSettings::keyMapListening = keymap;
+		g_keyMapCaptureMod = nullptr;
+		g_keyMapCaptureCommitsImmediately = false;
+		g_externalKeyMapIgnoredInput.reset();
 		g_keyMapIgnoredInputs.clear();
 
 		if (ImGuiContext* ctx = ImGui::GetCurrentContext()) {
@@ -111,15 +119,41 @@ namespace
 		g_keyMapIgnoreUntilFrame = ImGui::GetFrameCount() + 2;
 	}
 
+	bool BeginExternalKeyMapCapture(ModSettings::mod_setting* mod, ModSettings::setting_keymap* keymap)
+	{
+		if (!mod || !keymap || ModSettings::keyMapListening != nullptr) {
+			return false;
+		}
+
+		ModSettings::keyMapListening = keymap;
+		g_keyMapCaptureMod = mod;
+		g_keyMapCaptureCommitsImmediately = true;
+		g_keyMapIgnoredInputs.clear();
+		g_externalKeyMapIgnoredInput.reset();
+		if (g_mostRecentInputDown && g_inputsCurrentlyDown.contains(*g_mostRecentInputDown)) {
+			g_externalKeyMapIgnoredInput = g_mostRecentInputDown;
+			g_keyMapIgnoredInputs.insert(*g_externalKeyMapIgnoredInput);
+		}
+		g_keyMapIgnoreUntilFrame = -1;
+		return true;
+	}
+
 	void ClearKeyMapCapture()
 	{
 		ModSettings::keyMapListening = nullptr;
+		g_keyMapCaptureMod = nullptr;
+		g_keyMapCaptureCommitsImmediately = false;
+		g_externalKeyMapIgnoredInput.reset();
 		g_keyMapIgnoredInputs.clear();
 		g_keyMapIgnoreUntilFrame = -1;
 	}
 
 	void RefreshIgnoredKeyMapInputs()
 	{
+		if (g_keyMapCaptureCommitsImmediately) {
+			return;
+		}
+
 		if (g_keyMapIgnoreUntilFrame >= 0 && ImGui::GetFrameCount() > g_keyMapIgnoreUntilFrame) {
 			g_keyMapIgnoredInputs.clear();
 			g_keyMapIgnoreUntilFrame = -1;
@@ -2174,8 +2208,42 @@ void ModSettings::submitInput(uint32_t id)
 		return;
 	}
 
-	keyMapListening->value = id;
+	auto* keymap = keyMapListening;
+	auto* captureMod = g_keyMapCaptureMod;
+	const bool commitImmediately = g_keyMapCaptureCommitsImmediately;
+	const bool changed = keymap->value != static_cast<int>(id);
+	keymap->value = static_cast<int>(id);
 	ClearKeyMapCapture();
+
+	if (changed && commitImmediately && captureMod) {
+		MarkIniDirty(captureMod);
+		CommitIniDirtyPage(captureMod);
+	}
+}
+
+void ModSettings::ObserveKeymapCaptureInput(uint32_t id, bool isDown)
+{
+	if (isDown) {
+		g_inputsCurrentlyDown.insert(id);
+		g_mostRecentInputDown = id;
+		return;
+	}
+
+	g_inputsCurrentlyDown.erase(id);
+	if (g_externalKeyMapIgnoredInput && *g_externalKeyMapIgnoredInput == id) {
+		g_keyMapIgnoredInputs.erase(id);
+		g_externalKeyMapIgnoredInput.reset();
+	}
+}
+
+bool ModSettings::IsKeymapCapturing()
+{
+	return keyMapListening != nullptr;
+}
+
+bool ModSettings::IsExternalKeymapCaptureActive()
+{
+	return g_keyMapCaptureCommitsImmediately && keyMapListening != nullptr;
 }
 
 void ModSettings::ToggleHintsVisibility()
@@ -2358,6 +2426,10 @@ std::vector<ModSettings::mod_setting*> ModSettings::ForEachSetting(
 		return changedMods;
 	}
 
+	PageSettingsCallbacks callbacks{};
+	callbacks.checkbox = a_checkboxCallback;
+	callbacks.slider = a_sliderCallback;
+
 	for (auto* mod : mods) {
 		if (!mod) {
 			continue;
@@ -2366,7 +2438,7 @@ std::vector<ModSettings::mod_setting*> ModSettings::ForEachSetting(
 		if (a_pageCallback) {
 			a_pageCallback(mod->name);
 		}
-		for_each_setting(mod, mod->entries, true, 0, changedMods, {}, {}, a_checkboxCallback, a_sliderCallback);
+		for_each_setting(mod, mod->entries, true, 0, changedMods, callbacks);
 	}
 
 	return changedMods;
@@ -2374,12 +2446,9 @@ std::vector<ModSettings::mod_setting*> ModSettings::ForEachSetting(
 
 bool ModSettings::VisitPageSettings(
 	const void* a_pageIdentity,
-	const std::function<bool(const GroupVisit&)>& a_beginGroup,
-	const std::function<void(const GroupVisit&)>& a_endGroup,
-	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback,
-	const std::function<SliderUpdate(const SliderVisit&)>& a_sliderCallback)
+	const PageSettingsCallbacks& a_callbacks)
 {
-	if (!a_pageIdentity || (!a_checkboxCallback && !a_sliderCallback)) {
+	if (!a_pageIdentity) {
 		return false;
 	}
 
@@ -2389,7 +2458,7 @@ bool ModSettings::VisitPageSettings(
 		}
 
 		std::vector<mod_setting*> changedMods;
-		for_each_setting(mod, mod->entries, true, 0, changedMods, a_beginGroup, a_endGroup, a_checkboxCallback, a_sliderCallback);
+		for_each_setting(mod, mod->entries, true, 0, changedMods, a_callbacks);
 		return !changedMods.empty();
 	}
 
@@ -2403,16 +2472,10 @@ std::vector<ModSettings::mod_setting*> ModSettings::ForEachCheckbox(
 	return ForEachSetting(a_pageCallback, a_checkboxCallback, {});
 }
 
-void ModSettings::for_each_setting(
-	mod_setting* mod,
+bool ModSettings::has_visible_renderable_entry(
 	const std::vector<entry_base*>& entries,
 	bool enabled,
-	std::size_t groupDepth,
-	std::vector<mod_setting*>& changedMods,
-	const std::function<bool(const GroupVisit&)>& beginGroup,
-	const std::function<void(const GroupVisit&)>& endGroup,
-	const std::function<std::optional<bool>(const CheckboxVisit&)>& checkboxCallback,
-	const std::function<SliderUpdate(const SliderVisit&)>& sliderCallback)
+	const PageSettingsCallbacks& callbacks)
 {
 	for (auto* entry : entries) {
 		if (!entry) {
@@ -2427,6 +2490,86 @@ void ModSettings::for_each_setting(
 		const bool entryEnabled = enabled && available;
 		if (entry->is_group()) {
 			auto* group = static_cast<entry_group*>(entry);
+			if (has_visible_renderable_entry(group->entries, entryEnabled, callbacks)) {
+				return true;
+			}
+			continue;
+		}
+
+		switch (entry->type) {
+		case kEntryType_Checkbox:
+			if (callbacks.checkbox) {
+				return true;
+			}
+			break;
+		case kEntryType_Slider:
+			if (callbacks.slider) {
+				return true;
+			}
+			break;
+		case kEntryType_Dropdown:
+			if (callbacks.dropdown) {
+				return true;
+			}
+			break;
+		case kEntryType_Textbox:
+			if (callbacks.textbox) {
+				return true;
+			}
+			break;
+		case kEntryType_Text:
+			if (callbacks.text) {
+				return true;
+			}
+			break;
+		case kEntryType_Color:
+			if (callbacks.color) {
+				return true;
+			}
+			break;
+		case kEntryType_Keymap:
+			if (callbacks.keymap) {
+				return true;
+			}
+			break;
+		case kEntryType_Button:
+			if (callbacks.button) {
+				return true;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	return false;
+}
+
+void ModSettings::for_each_setting(
+	mod_setting* mod,
+	const std::vector<entry_base*>& entries,
+	bool enabled,
+	std::size_t groupDepth,
+	std::vector<mod_setting*>& changedMods,
+	const PageSettingsCallbacks& callbacks)
+{
+	for (auto* entry : entries) {
+		if (!entry) {
+			continue;
+		}
+
+		const bool available = entry->control.satisfied();
+		if (!available && entry->control.failAction == entry_base::Control::kFailAction_Hide) {
+			continue;
+		}
+
+		const bool entryEnabled = enabled && available;
+		if (entry->is_group()) {
+			auto* group = static_cast<entry_group*>(entry);
+			if (callbacks.beginGroup && !has_visible_renderable_entry(group->entries, entryEnabled, callbacks)) {
+				continue;
+			}
+
 			const GroupVisit visit{
 				group,
 				mod,
@@ -2436,16 +2579,16 @@ void ModSettings::for_each_setting(
 				groupDepth,
 				entryEnabled
 			};
-			if (beginGroup) {
-				const bool showChildren = beginGroup(visit);
+			if (callbacks.beginGroup) {
+				const bool showChildren = callbacks.beginGroup(visit);
 				if (showChildren) {
-					for_each_setting(mod, group->entries, entryEnabled, groupDepth + 1, changedMods, beginGroup, endGroup, checkboxCallback, sliderCallback);
+					for_each_setting(mod, group->entries, entryEnabled, groupDepth + 1, changedMods, callbacks);
 				}
-				if (endGroup) {
-					endGroup(visit);
+				if (callbacks.endGroup) {
+					callbacks.endGroup(visit);
 				}
 			} else {
-				for_each_setting(mod, group->entries, entryEnabled, groupDepth + 1, changedMods, beginGroup, endGroup, checkboxCallback, sliderCallback);
+				for_each_setting(mod, group->entries, entryEnabled, groupDepth + 1, changedMods, callbacks);
 			}
 			continue;
 		}
@@ -2457,7 +2600,7 @@ void ModSettings::for_each_setting(
 			}
 		};
 
-		if (entry->type == kEntryType_Checkbox && checkboxCallback) {
+		if (entry->type == kEntryType_Checkbox && callbacks.checkbox) {
 			auto* checkbox = static_cast<setting_checkbox*>(entry);
 			const CheckboxVisit visit{
 				checkbox,
@@ -2469,7 +2612,7 @@ void ModSettings::for_each_setting(
 				checkbox->value,
 				entryEnabled
 			};
-			const auto replacement = checkboxCallback(visit);
+			const auto replacement = callbacks.checkbox(visit);
 			if (replacement && entryEnabled && *replacement != checkbox->value) {
 				checkbox->value = *replacement;
 				markCompletedEdit();
@@ -2477,7 +2620,7 @@ void ModSettings::for_each_setting(
 			continue;
 		}
 
-		if (entry->type == kEntryType_Slider && sliderCallback) {
+		if (entry->type == kEntryType_Slider && callbacks.slider) {
 			auto* slider = static_cast<setting_slider*>(entry);
 			const int initialStepIndex = Utils::SliderStepIndex(slider->value, slider->min, slider->step);
 
@@ -2494,7 +2637,7 @@ void ModSettings::for_each_setting(
 				slider->step,
 				entryEnabled
 			};
-			const SliderUpdate update = sliderCallback(visit);
+			const SliderUpdate update = callbacks.slider(visit);
 			if (entryEnabled) {
 				const int stepCount = Utils::SliderStepIndex(slider->max, slider->min, slider->step);
 				const int stepIndex = update.stepIndex ?
@@ -2504,6 +2647,142 @@ void ModSettings::for_each_setting(
 			}
 			if (update.editCompleted && entryEnabled) {
 				markCompletedEdit();
+			}
+			continue;
+		}
+
+		if (entry->type == kEntryType_Dropdown && callbacks.dropdown) {
+			auto* dropdown = static_cast<setting_dropdown*>(entry);
+			const DropdownVisit visit{
+				dropdown,
+				mod,
+				mod->name,
+				dropdown->name.get(),
+				dropdown->desc.get(),
+				std::span<const std::string>(dropdown->options.data(), dropdown->options.size()),
+				groupDepth,
+				dropdown->value,
+				entryEnabled
+			};
+			const auto replacement = callbacks.dropdown(visit);
+			if (replacement && entryEnabled && !dropdown->options.empty()) {
+				const int selectedIndex = (std::clamp)(*replacement, 0, static_cast<int>(dropdown->options.size()) - 1);
+				if (selectedIndex != dropdown->value) {
+					dropdown->value = selectedIndex;
+					markCompletedEdit();
+				}
+			}
+			continue;
+		}
+
+		if (entry->type == kEntryType_Textbox && callbacks.textbox) {
+			auto* textbox = static_cast<setting_textbox*>(entry);
+			const TextboxVisit visit{
+				textbox,
+				mod,
+				mod->name,
+				textbox->name.get(),
+				textbox->desc.get(),
+				textbox->value,
+				groupDepth,
+				entryEnabled
+			};
+			const TextboxUpdate update = callbacks.textbox(visit);
+			if (update.value && entryEnabled) {
+				textbox->value = *update.value;
+			}
+			if (update.editCompleted && entryEnabled) {
+				markCompletedEdit();
+			}
+			continue;
+		}
+
+		if (entry->type == kEntryType_Text && callbacks.text) {
+			auto* text = static_cast<entry_text*>(entry);
+			callbacks.text(TextVisit{
+				text,
+				mod,
+				mod->name,
+				text->name.get(),
+				text->desc.get(),
+				Rgba{ text->_color.x, text->_color.y, text->_color.z, text->_color.w },
+				groupDepth,
+				entryEnabled
+			});
+			continue;
+		}
+
+		if (entry->type == kEntryType_Color && callbacks.color) {
+			auto* color = static_cast<setting_color*>(entry);
+			const ColorVisit visit{
+				color,
+				mod,
+				mod->name,
+				color->name.get(),
+				color->desc.get(),
+				Rgba{ color->color.x, color->color.y, color->color.z, color->color.w },
+				groupDepth,
+				entryEnabled
+			};
+			const ColorUpdate update = callbacks.color(visit);
+			if (update.value && entryEnabled) {
+				color->color = ImVec4(
+					update.value->red,
+					update.value->green,
+					update.value->blue,
+					update.value->alpha);
+			}
+			if (update.editCompleted && entryEnabled) {
+				markCompletedEdit();
+			}
+			continue;
+		}
+
+		if (entry->type == kEntryType_Keymap && callbacks.keymap) {
+			auto* keymap = static_cast<setting_keymap*>(entry);
+			const KeymapVisit visit{
+				keymap,
+				mod,
+				mod->name,
+				keymap->name.get(),
+				keymap->desc.get(),
+				setting_keymap::keyid_to_str(keymap->value),
+				groupDepth,
+				keyMapListening == keymap,
+				entryEnabled
+			};
+			const KeymapAction action = callbacks.keymap(visit);
+			if (!entryEnabled) {
+				continue;
+			}
+			if (action == KeymapAction::BeginCapture) {
+				BeginExternalKeyMapCapture(mod, keymap);
+			} else if (action == KeymapAction::Unmap) {
+				if (keyMapListening == keymap) {
+					ClearKeyMapCapture();
+				}
+				if (keymap->value != 0) {
+					keymap->value = 0;
+					markCompletedEdit();
+				}
+			}
+			continue;
+		}
+
+		if (entry->type == kEntryType_Button && callbacks.button) {
+			auto* button = static_cast<entry_button*>(entry);
+			const ButtonVisit visit{
+				button,
+				mod,
+				mod->name,
+				button->name.get(),
+				button->desc.get(),
+				groupDepth,
+				entryEnabled
+			};
+			if (entryEnabled && callbacks.button(visit)) {
+				std::string eventName = "dmenu_buttonCallback";
+				send_mod_callback_event(eventName, button->id);
 			}
 		}
 	}
