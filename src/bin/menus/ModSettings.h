@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PCH.h"
+#include <cstddef>
 #include <unordered_set>
 #include <optional>
 #include <string_view>
@@ -333,11 +334,31 @@ public:
 
 public:
 
+	struct PageVisit
+	{
+		const void* identity;
+		std::string_view name;
+	};
+
+	struct GroupVisit
+	{
+		const void* identity;
+		const void* pageIdentity;
+		std::string_view pageName;
+		const char* label;
+		const char* description;
+		std::size_t depth;
+		bool enabled;
+	};
+
 	struct CheckboxVisit
 	{
 		const void* identity;
+		const void* pageIdentity;
 		std::string_view pageName;
 		const char* label;
+		const char* description;
+		std::size_t groupDepth;
 		bool value;
 		bool enabled;
 	};
@@ -345,8 +366,11 @@ public:
 	struct SliderVisit
 	{
 		const void* identity;
+		const void* pageIdentity;
 		std::string_view pageName;
 		const char* label;
+		const char* description;
+		std::size_t groupDepth;
 		float value;
 		float min;
 		float max;
@@ -365,7 +389,18 @@ public:
 	/* Load settings config from .json files and saved settings from .ini files*/
 	static void init();
 
+	static void ForEachLoadedPage(const std::function<void(const PageVisit&)>& a_callback);
 	static void ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback);
+
+	// Visits one parsed page through the shared requirement and persistence path.
+	// Returns true when an accepted edit completed during the visit.
+	static bool VisitPageSettings(
+		const void* a_pageIdentity,
+		const std::function<bool(const GroupVisit&)>& a_beginGroup,
+		const std::function<void(const GroupVisit&)>& a_endGroup,
+		const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback,
+		const std::function<SliderUpdate(const SliderVisit&)>& a_sliderCallback);
+
 	// Visits parsed checkbox and slider settings in page and source order.
 	// Returned pages contain an accepted edit that has completed and can be
 	// committed through the existing targeted save path.
@@ -390,6 +425,7 @@ public:
 	// Persist one dirty page through the same sequence without flushing other
 	// pending pages. Returns true only when the page was dirty and committed.
 	static bool CommitIniDirtyMod(mod_setting* mod);
+	static bool CommitIniDirtyPage(const void* a_pageIdentity);
 	
 	private:
 	/* Load a single mod from .json file*/
@@ -412,7 +448,10 @@ public:
 		mod_setting* mod,
 		const std::vector<entry_base*>& entries,
 		bool enabled,
+		std::size_t groupDepth,
 		std::vector<mod_setting*>& changedMods,
+		const std::function<bool(const GroupVisit&)>& beginGroup,
+		const std::function<void(const GroupVisit&)>& endGroup,
 		const std::function<std::optional<bool>(const CheckboxVisit&)>& checkboxCallback,
 		const std::function<SliderUpdate(const SliderVisit&)>& sliderCallback);
 

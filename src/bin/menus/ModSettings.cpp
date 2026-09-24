@@ -910,6 +910,21 @@ bool ModSettings::CommitIniDirtyMod(mod_setting* mod)
 	return true;
 }
 
+bool ModSettings::CommitIniDirtyPage(const void* a_pageIdentity)
+{
+	if (!a_pageIdentity) {
+		return false;
+	}
+
+	for (auto* mod : mods) {
+		if (static_cast<const void*>(mod) == a_pageIdentity) {
+			return CommitIniDirtyMod(mod);
+		}
+	}
+
+	return false;
+}
+
 void ModSettings::commit_ini_dirty_mod(mod_setting* mod)
 {
 	flush_ini(mod);
@@ -2309,7 +2324,7 @@ void ModSettings::init()
 	INFO("Mod settings initialized");
 }
 
-void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback)
+void ModSettings::ForEachLoadedPage(const std::function<void(const PageVisit&)>& a_callback)
 {
 	if (!a_callback) {
 		return;
@@ -2317,9 +2332,20 @@ void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_vie
 
 	for (const auto* mod : mods) {
 		if (mod) {
-			a_callback(mod->name);
+			a_callback(PageVisit{ mod, mod->name });
 		}
 	}
+}
+
+void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback)
+{
+	if (!a_callback) {
+		return;
+	}
+
+	ForEachLoadedPage([&a_callback](const PageVisit& page) {
+		a_callback(page.name);
+	});
 }
 
 std::vector<ModSettings::mod_setting*> ModSettings::ForEachSetting(
@@ -2340,10 +2366,34 @@ std::vector<ModSettings::mod_setting*> ModSettings::ForEachSetting(
 		if (a_pageCallback) {
 			a_pageCallback(mod->name);
 		}
-		for_each_setting(mod, mod->entries, true, changedMods, a_checkboxCallback, a_sliderCallback);
+		for_each_setting(mod, mod->entries, true, 0, changedMods, {}, {}, a_checkboxCallback, a_sliderCallback);
 	}
 
 	return changedMods;
+}
+
+bool ModSettings::VisitPageSettings(
+	const void* a_pageIdentity,
+	const std::function<bool(const GroupVisit&)>& a_beginGroup,
+	const std::function<void(const GroupVisit&)>& a_endGroup,
+	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback,
+	const std::function<SliderUpdate(const SliderVisit&)>& a_sliderCallback)
+{
+	if (!a_pageIdentity || (!a_checkboxCallback && !a_sliderCallback)) {
+		return false;
+	}
+
+	for (auto* mod : mods) {
+		if (static_cast<const void*>(mod) != a_pageIdentity) {
+			continue;
+		}
+
+		std::vector<mod_setting*> changedMods;
+		for_each_setting(mod, mod->entries, true, 0, changedMods, a_beginGroup, a_endGroup, a_checkboxCallback, a_sliderCallback);
+		return !changedMods.empty();
+	}
+
+	return false;
 }
 
 std::vector<ModSettings::mod_setting*> ModSettings::ForEachCheckbox(
@@ -2357,7 +2407,10 @@ void ModSettings::for_each_setting(
 	mod_setting* mod,
 	const std::vector<entry_base*>& entries,
 	bool enabled,
+	std::size_t groupDepth,
 	std::vector<mod_setting*>& changedMods,
+	const std::function<bool(const GroupVisit&)>& beginGroup,
+	const std::function<void(const GroupVisit&)>& endGroup,
 	const std::function<std::optional<bool>(const CheckboxVisit&)>& checkboxCallback,
 	const std::function<SliderUpdate(const SliderVisit&)>& sliderCallback)
 {
@@ -2374,7 +2427,26 @@ void ModSettings::for_each_setting(
 		const bool entryEnabled = enabled && available;
 		if (entry->is_group()) {
 			auto* group = static_cast<entry_group*>(entry);
-			for_each_setting(mod, group->entries, entryEnabled, changedMods, checkboxCallback, sliderCallback);
+			const GroupVisit visit{
+				group,
+				mod,
+				mod->name,
+				group->name.get(),
+				group->desc.get(),
+				groupDepth,
+				entryEnabled
+			};
+			if (beginGroup) {
+				const bool showChildren = beginGroup(visit);
+				if (showChildren) {
+					for_each_setting(mod, group->entries, entryEnabled, groupDepth + 1, changedMods, beginGroup, endGroup, checkboxCallback, sliderCallback);
+				}
+				if (endGroup) {
+					endGroup(visit);
+				}
+			} else {
+				for_each_setting(mod, group->entries, entryEnabled, groupDepth + 1, changedMods, beginGroup, endGroup, checkboxCallback, sliderCallback);
+			}
 			continue;
 		}
 
@@ -2389,8 +2461,11 @@ void ModSettings::for_each_setting(
 			auto* checkbox = static_cast<setting_checkbox*>(entry);
 			const CheckboxVisit visit{
 				checkbox,
+				mod,
 				mod->name,
 				checkbox->name.get(),
+				checkbox->desc.get(),
+				groupDepth,
 				checkbox->value,
 				entryEnabled
 			};
@@ -2408,8 +2483,11 @@ void ModSettings::for_each_setting(
 
 			const SliderVisit visit{
 				slider,
+				mod,
 				mod->name,
 				slider->name.get(),
+				slider->desc.get(),
+				groupDepth,
 				slider->value,
 				slider->min,
 				slider->max,
