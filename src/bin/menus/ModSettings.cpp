@@ -2748,7 +2748,8 @@ void ModSettings::for_each_setting(
 				keymap->desc.get(),
 				setting_keymap::keyid_to_str(keymap->value),
 				groupDepth,
-				keyMapListening == keymap,
+				keyMapListening == keymap && g_keyMapCaptureCommitsImmediately,
+				keymap->value != 0,
 				entryEnabled
 			};
 			const KeymapAction action = callbacks.keymap(visit);
@@ -2757,6 +2758,10 @@ void ModSettings::for_each_setting(
 			}
 			if (action == KeymapAction::BeginCapture) {
 				BeginExternalKeyMapCapture(mod, keymap);
+			} else if (action == KeymapAction::CancelCapture) {
+				if (keyMapListening == keymap && g_keyMapCaptureCommitsImmediately) {
+					ClearKeyMapCapture();
+				}
 			} else if (action == KeymapAction::Unmap) {
 				if (keyMapListening == keymap) {
 					ClearKeyMapCapture();

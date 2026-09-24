@@ -465,6 +465,7 @@ public:
 		const char* bindingLabel;
 		std::size_t groupDepth;
 		bool capturing;
+		bool mapped;
 		bool enabled;
 	};
 
@@ -472,6 +473,7 @@ public:
 	{
 		None,
 		BeginCapture,
+		CancelCapture,
 		Unmap
 	};
 
