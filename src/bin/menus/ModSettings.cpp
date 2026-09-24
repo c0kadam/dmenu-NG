@@ -892,15 +892,32 @@ void ModSettings::MarkIniDirty(mod_setting* mod)
 
 void ModSettings::FlushIniDirtyMods()
 {
-	for (auto& mod : ini_dirty_mods) {
-		flush_ini(mod);
-		flush_game_setting(mod);
-		for (auto& callback : mod->callbacks) {
-			callback();
-		}
-		SendSettingsUpdateEvent(mod->name);
+	const std::vector<mod_setting*> dirtyMods(ini_dirty_mods.begin(), ini_dirty_mods.end());
+	for (auto* mod : dirtyMods) {
+		commit_ini_dirty_mod(mod);
 	}
 	ini_dirty_mods.clear();
+}
+
+bool ModSettings::CommitIniDirtyMod(mod_setting* mod)
+{
+	if (!mod || ini_dirty_mods.find(mod) == ini_dirty_mods.end()) {
+		return false;
+	}
+
+	commit_ini_dirty_mod(mod);
+	ini_dirty_mods.erase(mod);
+	return true;
+}
+
+void ModSettings::commit_ini_dirty_mod(mod_setting* mod)
+{
+	flush_ini(mod);
+	flush_game_setting(mod);
+	for (auto& callback : mod->callbacks) {
+		callback();
+	}
+	SendSettingsUpdateEvent(mod->name);
 }
 
 void ModSettings::FlushJsonDirtyMods()
@@ -2305,12 +2322,13 @@ void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_vie
 	}
 }
 
-void ModSettings::ForEachCheckbox(
+std::vector<ModSettings::mod_setting*> ModSettings::ForEachCheckbox(
 	const std::function<void(std::string_view)>& a_pageCallback,
 	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback)
 {
+	std::vector<mod_setting*> changedMods;
 	if (!a_checkboxCallback) {
-		return;
+		return changedMods;
 	}
 
 	for (auto* mod : mods) {
@@ -2321,14 +2339,17 @@ void ModSettings::ForEachCheckbox(
 		if (a_pageCallback) {
 			a_pageCallback(mod->name);
 		}
-		for_each_checkbox(mod, mod->entries, true, a_checkboxCallback);
+		for_each_checkbox(mod, mod->entries, true, changedMods, a_checkboxCallback);
 	}
+
+	return changedMods;
 }
 
 void ModSettings::for_each_checkbox(
 	mod_setting* mod,
 	const std::vector<entry_base*>& entries,
 	bool enabled,
+	std::vector<mod_setting*>& changedMods,
 	const std::function<std::optional<bool>(const CheckboxVisit&)>& callback)
 {
 	for (auto* entry : entries) {
@@ -2344,7 +2365,7 @@ void ModSettings::for_each_checkbox(
 		const bool entryEnabled = enabled && available;
 		if (entry->is_group()) {
 			auto* group = static_cast<entry_group*>(entry);
-			for_each_checkbox(mod, group->entries, entryEnabled, callback);
+			for_each_checkbox(mod, group->entries, entryEnabled, changedMods, callback);
 			continue;
 		}
 
@@ -2364,6 +2385,9 @@ void ModSettings::for_each_checkbox(
 		if (replacement && entryEnabled && *replacement != checkbox->value) {
 			checkbox->value = *replacement;
 			MarkIniDirty(mod);
+			if (std::find(changedMods.begin(), changedMods.end(), mod) == changedMods.end()) {
+				changedMods.push_back(mod);
+			}
 		}
 	}
 }

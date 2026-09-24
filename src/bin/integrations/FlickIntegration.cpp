@@ -28,7 +28,7 @@ namespace
 
 		void Draw() override
 		{
-			ModSettings::ForEachCheckbox(
+			const auto changedMods = ModSettings::ForEachCheckbox(
 				[](std::string_view pageName) {
 					FUCK::TextUnformatted(pageName.data(), pageName.data() + pageName.size());
 					FUCK::Separator();
@@ -46,6 +46,10 @@ namespace
 					FUCK::PopID();
 					return changed ? std::optional<bool>{ value } : std::nullopt;
 				});
+
+			for (auto* mod : changedMods) {
+				ModSettings::CommitIniDirtyMod(mod);
+			}
 		}
 	};
 }

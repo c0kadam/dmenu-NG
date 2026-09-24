@@ -348,7 +348,8 @@ public:
 	static void init();
 
 	static void ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback);
-	static void ForEachCheckbox(
+	// Returns only pages where the visitor supplied an enabled, changed value.
+	static std::vector<mod_setting*> ForEachCheckbox(
 		const std::function<void(std::string_view)>& a_pageCallback,
 		const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback);
 
@@ -359,6 +360,10 @@ public:
 	// Persist every dirty user settings page through the existing INI, callback,
 	// and update-event sequence.
 	static void FlushIniDirtyMods();
+
+	// Persist one dirty page through the same sequence without flushing other
+	// pending pages. Returns true only when the page was dirty and committed.
+	static bool CommitIniDirtyMod(mod_setting* mod);
 	
 	private:
 	/* Load a single mod from .json file*/
@@ -381,11 +386,13 @@ public:
 		mod_setting* mod,
 		const std::vector<entry_base*>& entries,
 		bool enabled,
+		std::vector<mod_setting*>& changedMods,
 		const std::function<std::optional<bool>(const CheckboxVisit&)>& callback);
 
 
 	static void load_ini(mod_setting* mod);
 	static void flush_ini(mod_setting* mod);
+	static void commit_ini_dirty_mod(mod_setting* mod);
 	
 	static void flush_game_setting(mod_setting* mod);
 
