@@ -2305,6 +2305,69 @@ void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_vie
 	}
 }
 
+void ModSettings::ForEachCheckbox(
+	const std::function<void(std::string_view)>& a_pageCallback,
+	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback)
+{
+	if (!a_checkboxCallback) {
+		return;
+	}
+
+	for (auto* mod : mods) {
+		if (!mod) {
+			continue;
+		}
+
+		if (a_pageCallback) {
+			a_pageCallback(mod->name);
+		}
+		for_each_checkbox(mod, mod->entries, true, a_checkboxCallback);
+	}
+}
+
+void ModSettings::for_each_checkbox(
+	mod_setting* mod,
+	const std::vector<entry_base*>& entries,
+	bool enabled,
+	const std::function<std::optional<bool>(const CheckboxVisit&)>& callback)
+{
+	for (auto* entry : entries) {
+		if (!entry) {
+			continue;
+		}
+
+		const bool available = entry->control.satisfied();
+		if (!available && entry->control.failAction == entry_base::Control::kFailAction_Hide) {
+			continue;
+		}
+
+		const bool entryEnabled = enabled && available;
+		if (entry->is_group()) {
+			auto* group = static_cast<entry_group*>(entry);
+			for_each_checkbox(mod, group->entries, entryEnabled, callback);
+			continue;
+		}
+
+		if (entry->type != kEntryType_Checkbox) {
+			continue;
+		}
+
+		auto* checkbox = static_cast<setting_checkbox*>(entry);
+		const CheckboxVisit visit{
+			checkbox,
+			mod->name,
+			checkbox->name.get(),
+			checkbox->value,
+			entryEnabled
+		};
+		const auto replacement = callback(visit);
+		if (replacement && entryEnabled && *replacement != checkbox->value) {
+			checkbox->value = *replacement;
+			MarkIniDirty(mod);
+		}
+	}
+}
+
 ModSettings::entry_base* ModSettings::load_json_non_group(nlohmann::json& json)
 {
 	entry_base* e = nullptr;

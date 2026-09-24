@@ -333,12 +333,24 @@ public:
 
 public:
 
+	struct CheckboxVisit
+	{
+		const void* identity;
+		std::string_view pageName;
+		const char* label;
+		bool value;
+		bool enabled;
+	};
+
 	static void show(); // called by imgui per tick
 	
 	/* Load settings config from .json files and saved settings from .ini files*/
 	static void init();
 
 	static void ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback);
+	static void ForEachCheckbox(
+		const std::function<void(std::string_view)>& a_pageCallback,
+		const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback);
 
 	// Mark a user settings page for the existing INI save/callback path after
 	// one of its parsed setting values changes.
@@ -365,6 +377,11 @@ public:
 	
 	static void get_all_settings(mod_setting* mod, std::vector<ModSettings::setting_base*>& r_vec);
 	static void get_all_entries(mod_setting* mod, std::vector<ModSettings::entry_base*>& r_vec);
+	static void for_each_checkbox(
+		mod_setting* mod,
+		const std::vector<entry_base*>& entries,
+		bool enabled,
+		const std::function<std::optional<bool>(const CheckboxVisit&)>& callback);
 
 
 	static void load_ini(mod_setting* mod);

@@ -28,15 +28,25 @@ namespace
 
 		void Draw() override
 		{
-			FUCK::SeparatorText("dMenu pages");
-			ModSettings::ForEachLoadedPageName([](std::string_view pageName) {
-				FUCK::TextUnformatted(pageName.data(), pageName.data() + pageName.size());
-			});
-			FUCK::Checkbox("Frontend widget test", &widgetTest_);
+			ModSettings::ForEachCheckbox(
+				[](std::string_view pageName) {
+					FUCK::TextUnformatted(pageName.data(), pageName.data() + pageName.size());
+					FUCK::Separator();
+				},
+				[](const ModSettings::CheckboxVisit& checkbox) -> std::optional<bool> {
+					bool value = checkbox.value;
+					FUCK::PushID(checkbox.identity);
+					if (!checkbox.enabled) {
+						FUCK::BeginDisabled();
+					}
+					const bool changed = FUCK::Checkbox(checkbox.label, &value);
+					if (!checkbox.enabled) {
+						FUCK::EndDisabled();
+					}
+					FUCK::PopID();
+					return changed ? std::optional<bool>{ value } : std::nullopt;
+				});
 		}
-
-	private:
-		bool widgetTest_{ false };
 	};
 }
 
