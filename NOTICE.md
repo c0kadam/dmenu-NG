@@ -57,6 +57,24 @@ license text is in `LICENSES/FLICK-MIT.txt`.
 The header performs runtime discovery of `FUCK.dll`. FLICK itself is not
 bundled with dMenu NG and is not linked into `dmenu.dll`.
 
+## SKSE Menu Framework Public API
+
+dMenu NG vendors the unmodified public `SKSEMenuFramework.h` from
+[QTR-Modding/SKSE-Menu-Framework-3-API](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API).
+
+- Commit: `1dcb70179076aae4ab626f43c5baab2735ca5877`
+- Header source: https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API/blob/1dcb70179076aae4ab626f43c5baab2735ca5877/SKSEMenuFramework.h
+- Header Git blob: `6a609bca79987661af133eaa0c9960f2fe645eb1`
+- Header SHA-256: `48416E8220CA777E2FFFC2EF2BAF21F699AB2E6C409D437F44EEC5E311C3524C`
+- License source: https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API/blob/1dcb70179076aae4ab626f43c5baab2735ca5877/LICENSE
+- License Git blob: `8000a6faacf471c537530805ab29523c7732e11a`
+- License SHA-256: `20C17D8B8C48A600800DFD14F95D5CB9FF47066A9641DDEAB48DC54AEC96E331`
+
+The public API is licensed under LGPL-2.1; its exact license text is preserved
+in `LICENSES/SKSEMenuFramework-API-LGPL-2.1.txt`. The header performs runtime
+discovery of `SKSEMenuFramework.dll`; the framework is not bundled with dMenu
+NG and is not linked into `dmenu.dll`.
+
 ## CommonLibSSE-NG
 
 dMenu NG statically links CommonLibSSE-NG using this pinned source revision:

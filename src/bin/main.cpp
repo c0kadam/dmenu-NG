@@ -3,6 +3,7 @@
 #include "Hooks.h"
 #include "DMenuAPI.h"
 #include "integrations/FlickIntegration.h"
+#include "integrations/SkseMenuFrameworkIntegration.h"
 #include "menus/ModSettings.h"
 #include "menus/Settings.h"
 #include "menus/Trainer.h"
@@ -28,6 +29,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 		IME::SimpleIMEBridge::Get().DetectAfterPluginsLoaded();
 		WheelerCooperativeOpening::RetryInitializationAfterPluginsLoaded();
 		FlickIntegration::InitializeAfterPluginsLoaded();
+		SkseMenuFrameworkIntegration::InitializeAfterPluginsLoaded();
 		DMenuAPI::DispatchInterface();
 		break;
 	case SKSE::MessagingInterface::kPostLoadGame:

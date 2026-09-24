@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Preserve the exact upstream bytes of the vendored public API header.
+src/include/lib/SKSEMenuFramework.h -text whitespace=cr-at-eol
