@@ -342,12 +342,38 @@ public:
 		bool enabled;
 	};
 
+	struct SliderVisit
+	{
+		const void* identity;
+		std::string_view pageName;
+		const char* label;
+		float value;
+		float min;
+		float max;
+		float step;
+		bool enabled;
+	};
+
+	struct SliderUpdate
+	{
+		std::optional<int> stepIndex = std::nullopt;
+		bool editCompleted = false;
+	};
+
 	static void show(); // called by imgui per tick
 	
 	/* Load settings config from .json files and saved settings from .ini files*/
 	static void init();
 
 	static void ForEachLoadedPageName(const std::function<void(std::string_view)>& a_callback);
+	// Visits parsed checkbox and slider settings in page and source order.
+	// Returned pages contain an accepted edit that has completed and can be
+	// committed through the existing targeted save path.
+	static std::vector<mod_setting*> ForEachSetting(
+		const std::function<void(std::string_view)>& a_pageCallback,
+		const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback,
+		const std::function<SliderUpdate(const SliderVisit&)>& a_sliderCallback);
+
 	// Returns only pages where the visitor supplied an enabled, changed value.
 	static std::vector<mod_setting*> ForEachCheckbox(
 		const std::function<void(std::string_view)>& a_pageCallback,
@@ -382,12 +408,13 @@ public:
 	
 	static void get_all_settings(mod_setting* mod, std::vector<ModSettings::setting_base*>& r_vec);
 	static void get_all_entries(mod_setting* mod, std::vector<ModSettings::entry_base*>& r_vec);
-	static void for_each_checkbox(
+	static void for_each_setting(
 		mod_setting* mod,
 		const std::vector<entry_base*>& entries,
 		bool enabled,
 		std::vector<mod_setting*>& changedMods,
-		const std::function<std::optional<bool>(const CheckboxVisit&)>& callback);
+		const std::function<std::optional<bool>(const CheckboxVisit&)>& checkboxCallback,
+		const std::function<SliderUpdate(const SliderVisit&)>& sliderCallback);
 
 
 	static void load_ini(mod_setting* mod);

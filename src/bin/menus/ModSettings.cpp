@@ -2322,12 +2322,13 @@ void ModSettings::ForEachLoadedPageName(const std::function<void(std::string_vie
 	}
 }
 
-std::vector<ModSettings::mod_setting*> ModSettings::ForEachCheckbox(
+std::vector<ModSettings::mod_setting*> ModSettings::ForEachSetting(
 	const std::function<void(std::string_view)>& a_pageCallback,
-	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback)
+	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback,
+	const std::function<SliderUpdate(const SliderVisit&)>& a_sliderCallback)
 {
 	std::vector<mod_setting*> changedMods;
-	if (!a_checkboxCallback) {
+	if (!a_checkboxCallback && !a_sliderCallback) {
 		return changedMods;
 	}
 
@@ -2339,18 +2340,26 @@ std::vector<ModSettings::mod_setting*> ModSettings::ForEachCheckbox(
 		if (a_pageCallback) {
 			a_pageCallback(mod->name);
 		}
-		for_each_checkbox(mod, mod->entries, true, changedMods, a_checkboxCallback);
+		for_each_setting(mod, mod->entries, true, changedMods, a_checkboxCallback, a_sliderCallback);
 	}
 
 	return changedMods;
 }
 
-void ModSettings::for_each_checkbox(
+std::vector<ModSettings::mod_setting*> ModSettings::ForEachCheckbox(
+	const std::function<void(std::string_view)>& a_pageCallback,
+	const std::function<std::optional<bool>(const CheckboxVisit&)>& a_checkboxCallback)
+{
+	return ForEachSetting(a_pageCallback, a_checkboxCallback, {});
+}
+
+void ModSettings::for_each_setting(
 	mod_setting* mod,
 	const std::vector<entry_base*>& entries,
 	bool enabled,
 	std::vector<mod_setting*>& changedMods,
-	const std::function<std::optional<bool>(const CheckboxVisit&)>& callback)
+	const std::function<std::optional<bool>(const CheckboxVisit&)>& checkboxCallback,
+	const std::function<SliderUpdate(const SliderVisit&)>& sliderCallback)
 {
 	for (auto* entry : entries) {
 		if (!entry) {
@@ -2365,28 +2374,58 @@ void ModSettings::for_each_checkbox(
 		const bool entryEnabled = enabled && available;
 		if (entry->is_group()) {
 			auto* group = static_cast<entry_group*>(entry);
-			for_each_checkbox(mod, group->entries, entryEnabled, changedMods, callback);
+			for_each_setting(mod, group->entries, entryEnabled, changedMods, checkboxCallback, sliderCallback);
 			continue;
 		}
 
-		if (entry->type != kEntryType_Checkbox) {
-			continue;
-		}
-
-		auto* checkbox = static_cast<setting_checkbox*>(entry);
-		const CheckboxVisit visit{
-			checkbox,
-			mod->name,
-			checkbox->name.get(),
-			checkbox->value,
-			entryEnabled
-		};
-		const auto replacement = callback(visit);
-		if (replacement && entryEnabled && *replacement != checkbox->value) {
-			checkbox->value = *replacement;
+		auto markCompletedEdit = [&]() {
 			MarkIniDirty(mod);
 			if (std::find(changedMods.begin(), changedMods.end(), mod) == changedMods.end()) {
 				changedMods.push_back(mod);
+			}
+		};
+
+		if (entry->type == kEntryType_Checkbox && checkboxCallback) {
+			auto* checkbox = static_cast<setting_checkbox*>(entry);
+			const CheckboxVisit visit{
+				checkbox,
+				mod->name,
+				checkbox->name.get(),
+				checkbox->value,
+				entryEnabled
+			};
+			const auto replacement = checkboxCallback(visit);
+			if (replacement && entryEnabled && *replacement != checkbox->value) {
+				checkbox->value = *replacement;
+				markCompletedEdit();
+			}
+			continue;
+		}
+
+		if (entry->type == kEntryType_Slider && sliderCallback) {
+			auto* slider = static_cast<setting_slider*>(entry);
+			const int initialStepIndex = Utils::SliderStepIndex(slider->value, slider->min, slider->step);
+
+			const SliderVisit visit{
+				slider,
+				mod->name,
+				slider->name.get(),
+				slider->value,
+				slider->min,
+				slider->max,
+				slider->step,
+				entryEnabled
+			};
+			const SliderUpdate update = sliderCallback(visit);
+			if (entryEnabled) {
+				const int stepCount = Utils::SliderStepIndex(slider->max, slider->min, slider->step);
+				const int stepIndex = update.stepIndex ?
+					(std::clamp)(*update.stepIndex, 0, stepCount) :
+					initialStepIndex;
+				slider->value = Utils::SliderValueAtStep(stepIndex, slider->min, slider->step);
+			}
+			if (update.editCompleted && entryEnabled) {
+				markCompletedEdit();
 			}
 		}
 	}

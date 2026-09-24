@@ -117,6 +117,16 @@ namespace Utils
 		}
 	}
 
+	int SliderStepIndex(float a_value, float a_min, float a_step)
+	{
+		return int((a_value - a_min) / a_step);
+	}
+
+	float SliderValueAtStep(int a_index, float a_min, float a_step)
+	{
+		return a_min + float(a_index) * a_step;
+	}
+
 
 }
 
@@ -231,12 +241,12 @@ namespace ImGui
 		ImFormatString(text_buf, IM_ARRAYSIZE(text_buf), "%g", *v);
 
 		// Map from [v_min,v_max] to [0,N]
-		const int countValues = int((v_max - v_min) / v_step);
-		int v_i = int((*v - v_min) / v_step);
+		const int countValues = Utils::SliderStepIndex(v_max, v_min, v_step);
+		int v_i = Utils::SliderStepIndex(*v, v_min, v_step);
 		const bool value_changed = SliderInt(label, &v_i, 0, countValues, text_buf);
 
 		// Remap from [0,N] to [v_min,v_max]
-		*v = v_min + float(v_i) * v_step;
+		*v = Utils::SliderValueAtStep(v_i, v_min, v_step);
 		return value_changed;
 	}
 

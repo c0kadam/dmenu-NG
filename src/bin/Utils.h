@@ -1,5 +1,6 @@
 #pragma once
 #include <unordered_set>
+#include "imgui.h"
 inline size_t strl(const char* a_str)
 {
 	if (a_str == nullptr)
@@ -49,6 +50,8 @@ namespace Utils
 	bool IsFormEditorIDCacheInitialized() noexcept;
 	std::string getFormEditorID(const RE::TESForm* a_form, EditorIDSource* a_source = nullptr);
 	std::string_view GetEditorIDSourceName(EditorIDSource a_source) noexcept;
+	int SliderStepIndex(float a_value, float a_min, float a_step);
+	float SliderValueAtStep(int a_index, float a_min, float a_step);
 }
 
 /*Helper class to load from a simple ini file.*/
