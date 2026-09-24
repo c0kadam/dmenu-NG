@@ -35,9 +35,7 @@ namespace
 		"igButton",
 		"igTextUnformatted",
 		"igTextWrappedV",
-		"igTextDisabledV",
 		"igSeparator",
-		"igSeparatorText",
 		"igSpacing",
 		"igIndent",
 		"igUnindent",
@@ -62,7 +60,9 @@ namespace
 		"igIsItemDeactivatedAfterEdit",
 		"igPushID_Ptr",
 		"igPushID_Int",
-		"igPopID"
+		"igPopID",
+		"igCollapsingHeader_TreeNodeFlags",
+		"igSetNextItemOpen"
 	};
 
 	constexpr std::size_t kMaximumRegisteredPages = 128;
@@ -74,11 +74,14 @@ namespace
 	constexpr float kLabelWeight = 0.46f;
 	constexpr float kControlWeight = 0.54f;
 	constexpr float kSubsectionIndent = 16.0f;
+	constexpr unsigned int kSettingsIcon = 0xf013;  // Font Awesome cog
+	constexpr unsigned int kSlidersIcon = 0xf1de;   // Font Awesome sliders
 
 	struct GroupStats
 	{
 		std::size_t directLeaves = 0;
-		std::size_t directGroups = 0;
+		std::size_t descendantLeaves = 0;
+		std::size_t sliders = 0;
 		std::string_view soleLeafLabel;
 	};
 
@@ -86,6 +89,7 @@ namespace
 	{
 		bool hasHeading = false;
 		bool indented = false;
+		bool major = false;
 	};
 
 	struct PresentationState
@@ -93,9 +97,14 @@ namespace
 		std::unordered_map<const void*, GroupStats> groupStats;
 		std::vector<GroupFrame> groupStack;
 		std::string_view pageName;
+		std::string_view pageDescription;
 		std::size_t headingDepth = 0;
+		std::size_t majorCount = 0;
 		bool subsectionIndented = false;
 	};
+
+	bool g_hasThemeStyles = false;
+	bool g_hasFontAwesome = false;
 
 	struct RowLayout
 	{
@@ -113,13 +122,67 @@ namespace
 		return ImGuiMCP::IsItemHovered() || ImGuiMCP::IsItemFocused();
 	}
 
+	ImGuiMCP::ImVec4 ThemeColor(ImGuiMCP::ImGuiCol a_color)
+	{
+		return *ImGuiMCP::GetStyleColorVec4(a_color);
+	}
+
+	ImGuiMCP::ImVec4 WithAlpha(ImGuiMCP::ImVec4 a_color, float a_factor)
+	{
+		a_color.w *= a_factor;
+		return a_color;
+	}
+
+	ImGuiMCP::ImVec4 Blend(ImGuiMCP::ImVec4 a_base, ImGuiMCP::ImVec4 a_accent, float a_amount)
+	{
+		return {
+			a_base.x + (a_accent.x - a_base.x) * a_amount,
+			a_base.y + (a_accent.y - a_base.y) * a_amount,
+			a_base.z + (a_accent.z - a_base.z) * a_amount,
+			a_base.w
+		};
+	}
+
+	ImGuiMCP::ImVec4 HeaderColor(ImGuiMCP::ImGuiCol a_color, ImGuiMCP::ImVec4 a_accent, float a_amount)
+	{
+		auto color = Blend(ThemeColor(a_color), a_accent, a_amount);
+		color.w = (std::max)(color.w, 0.28f);
+		return color;
+	}
+
+	void SecondaryText(const char* a_text)
+	{
+		if (!a_text || a_text[0] == '\0') {
+			return;
+		}
+		if (g_hasThemeStyles) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.76f));
+		}
+		ImGuiMCP::TextWrapped("%s", a_text);
+		if (g_hasThemeStyles) {
+			ImGuiMCP::PopStyleColor();
+		}
+	}
+
+	void HelpMarker(bool a_emphasized)
+	{
+		if (g_hasThemeStyles) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text,
+				WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), a_emphasized ? 1.0f : 0.68f));
+		}
+		ImGuiMCP::TextUnformatted("?");
+		if (g_hasThemeStyles) {
+			ImGuiMCP::PopStyleColor();
+		}
+	}
+
 	void DrawDescription(const char* a_description, bool a_targetHelp)
 	{
 		if (!a_description || a_description[0] == '\0') {
 			return;
 		}
 		ImGuiMCP::SameLine();
-		ImGuiMCP::TextDisabled("?");
+		HelpMarker(a_targetHelp);
 		if ((a_targetHelp || ItemRequestsHelp()) && ImGuiMCP::BeginTooltip()) {
 			ImGuiMCP::TextUnformatted(a_description);
 			ImGuiMCP::EndTooltip();
@@ -172,7 +235,7 @@ namespace
 		if (a_row.table) {
 			ImGuiMCP::TableSetColumnIndex(2);
 			if (a_description && a_description[0] != '\0') {
-				ImGuiMCP::TextDisabled("?");
+				HelpMarker(a_row.labelHelp || a_controlHelp);
 				if ((a_row.labelHelp || a_controlHelp || ItemRequestsHelp()) && ImGuiMCP::BeginTooltip()) {
 					ImGuiMCP::TextUnformatted(a_description);
 					ImGuiMCP::EndTooltip();
@@ -191,38 +254,65 @@ namespace
 		const auto found = a_state.groupStats.find(a_group.identity);
 		const GroupStats stats = found == a_state.groupStats.end() ? GroupStats{} : found->second;
 		const bool repeatsPage = a_state.headingDepth == 0 && RepeatsPageName(TextOrEmpty(a_group.label), a_state.pageName);
-		const bool singleLeafWrapper = stats.directLeaves == 1 && stats.directGroups == 0;
+		const bool singleLeafWrapper = stats.descendantLeaves == 1;
 		GroupFrame frame{};
-		if (repeatsPage && a_group.description && a_group.description[0] != '\0') {
-			ImGuiMCP::PushTextWrapPos();
-			ImGuiMCP::TextDisabled("%s", a_group.description);
-			ImGuiMCP::PopTextWrapPos();
-		} else if (!repeatsPage) {
+		bool showChildren = true;
+		if (!repeatsPage && stats.descendantLeaves != 0) {
 			ImGuiMCP::Spacing();
 			if (singleLeafWrapper) {
-				if (stats.soleLeafLabel != TextOrEmpty(a_group.label) ||
-				    (a_group.description && a_group.description[0] != '\0')) {
-					ImGuiMCP::TextDisabled("%s", TextOrEmpty(a_group.label));
+				if (stats.soleLeafLabel != TextOrEmpty(a_group.label)) {
+					SecondaryText(TextOrEmpty(a_group.label));
 				}
 			} else if (a_state.headingDepth == 0) {
-				ImGuiMCP::SeparatorText(TextOrEmpty(a_group.label));
+				const auto label = (g_hasFontAwesome ?
+					FontAwesome::UnicodeToUtf8(stats.sliders >= 2 && stats.sliders * 2 >= stats.descendantLeaves ? kSlidersIcon : kSettingsIcon) + "  " + TextOrEmpty(a_group.label) :
+					std::string(TextOrEmpty(a_group.label))) + "###section";
+				if (g_hasThemeStyles) {
+					const auto accent = ThemeColor(ImGuiMCP::ImGuiCol_CheckMark);
+					const auto normal = ThemeColor(ImGuiMCP::ImGuiCol_Text);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, Blend(normal, accent, 0.64f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, HeaderColor(ImGuiMCP::ImGuiCol_Header, accent, 0.16f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, HeaderColor(ImGuiMCP::ImGuiCol_HeaderHovered, accent, 0.20f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, HeaderColor(ImGuiMCP::ImGuiCol_HeaderActive, accent, 0.26f));
+				}
+				ImGuiMCP::SetNextItemOpen(a_state.majorCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
+				if (g_hasFontAwesome) {
+					FontAwesome::PushSolid();
+				}
+				showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
+				if (g_hasFontAwesome) {
+					FontAwesome::Pop();
+				}
+				if (g_hasThemeStyles) {
+					ImGuiMCP::PopStyleColor(4);
+				}
 				frame.hasHeading = true;
+				frame.major = true;
 			} else {
 				if (!a_state.subsectionIndented) {
 					ImGuiMCP::Indent(kSubsectionIndent);
 					frame.indented = true;
 					a_state.subsectionIndented = true;
 				}
-				ImGuiMCP::TextDisabled("%s", TextOrEmpty(a_group.label));
+				if (g_hasThemeStyles) {
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text,
+						Blend(ThemeColor(ImGuiMCP::ImGuiCol_Text), ThemeColor(ImGuiMCP::ImGuiCol_CheckMark), 0.34f));
+				}
+				ImGuiMCP::TextUnformatted(TextOrEmpty(a_group.label));
+				if (g_hasThemeStyles) {
+					ImGuiMCP::PopStyleColor();
+				}
 				frame.hasHeading = true;
 			}
-			DrawDescription(a_group.description, false);
+			if (showChildren && a_group.description && a_group.description[0] != '\0') {
+				SecondaryText(a_group.description);
+			}
 			if (frame.hasHeading) {
 				++a_state.headingDepth;
 			}
 		}
 		a_state.groupStack.push_back(frame);
-		return true;
+		return showChildren;
 	}
 
 	void EndGroup(PresentationState& a_state)
@@ -236,10 +326,14 @@ namespace
 			ImGuiMCP::Unindent(kSubsectionIndent);
 			a_state.subsectionIndented = false;
 		}
+		if (frame.major) {
+			ImGuiMCP::Spacing();
+		}
 		ImGuiMCP::PopID();
 	}
 
-	std::unordered_map<const void*, GroupStats> CollectGroupStats(const void* a_pageIdentity)
+	std::unordered_map<const void*, GroupStats> CollectGroupStats(
+		const void* a_pageIdentity, std::string_view a_pageName, std::string_view& a_pageDescription)
 	{
 		std::unordered_map<const void*, GroupStats> stats;
 		std::vector<const void*> groupPath;
@@ -248,19 +342,29 @@ namespace
 				auto& group = stats[groupPath.back()];
 				++group.directLeaves;
 				group.soleLeafLabel = group.directLeaves == 1 ? TextOrEmpty(label) : std::string_view{};
+				for (const auto* identity : groupPath) {
+					++stats[identity].descendantLeaves;
+				}
 			}
 		};
 		ModSettings::PageSettingsCallbacks callbacks{};
 		callbacks.beginGroup = [&](const ModSettings::GroupVisit& group) {
-			if (!groupPath.empty()) {
-				++stats[groupPath.back()].directGroups;
+			if (groupPath.empty() && RepeatsPageName(TextOrEmpty(group.label), a_pageName) &&
+				group.description && group.description[0] != '\0') {
+				a_pageDescription = group.description;
 			}
 			groupPath.push_back(group.identity);
 			return true;
 		};
 		callbacks.endGroup = [&](const ModSettings::GroupVisit&) { groupPath.pop_back(); };
 		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> { countLeaf(visit.label); return std::nullopt; };
-		callbacks.slider = [&](const ModSettings::SliderVisit& visit) { countLeaf(visit.label); return ModSettings::SliderUpdate{}; };
+		callbacks.slider = [&](const ModSettings::SliderVisit& visit) {
+			countLeaf(visit.label);
+			for (const auto* identity : groupPath) {
+				++stats[identity].sliders;
+			}
+			return ModSettings::SliderUpdate{};
+		};
 		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> { countLeaf(visit.label); return std::nullopt; };
 		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) { countLeaf(visit.label); return ModSettings::TextboxUpdate{}; };
 		callbacks.text = [&](const ModSettings::TextVisit& visit) { countLeaf(visit.label); };
@@ -472,7 +576,7 @@ namespace
 		}
 		bool controlHelp = false;
 		if (a_keymap.capturing) {
-			ImGuiMCP::TextDisabled("Press a key...");
+			SecondaryText("Press a key...");
 			if (row.table) {
 				ImGuiMCP::SameLine();
 			}
@@ -527,9 +631,20 @@ namespace
 	void RenderPage(const void* a_pageIdentity, std::string_view a_pageName)
 	{
 		PresentationState presentation{};
-		presentation.groupStats = CollectGroupStats(a_pageIdentity);
+		presentation.groupStats = CollectGroupStats(a_pageIdentity, a_pageName, presentation.pageDescription);
 		presentation.pageName = a_pageName;
+		if (g_hasFontAwesome) {
+			FontAwesome::PushSolid();
+			if (g_hasThemeStyles) {
+				ImGuiMCP::TextColored(ThemeColor(ImGuiMCP::ImGuiCol_CheckMark), "%s", FontAwesome::UnicodeToUtf8(kSettingsIcon).c_str());
+			} else {
+				ImGuiMCP::TextUnformatted(FontAwesome::UnicodeToUtf8(kSettingsIcon).c_str());
+			}
+			FontAwesome::Pop();
+			ImGuiMCP::SameLine();
+		}
 		ImGuiMCP::TextUnformatted(a_pageName.data(), a_pageName.data() + a_pageName.size());
+		SecondaryText(presentation.pageDescription.data());
 		ImGuiMCP::Separator();
 		ImGuiMCP::Spacing();
 
@@ -588,6 +703,10 @@ namespace SkseMenuFrameworkIntegration
 		if (!module || !HasRequiredExports(module)) {
 			return;
 		}
+		g_hasThemeStyles = ::GetProcAddress(module, "igGetStyleColorVec4") &&
+			::GetProcAddress(module, "igPushStyleColor_Vec4") &&
+			::GetProcAddress(module, "igPopStyleColor");
+		g_hasFontAwesome = ::GetProcAddress(module, "PushSolid") && ::GetProcAddress(module, "Pop");
 
 		std::array<ModSettings::PageVisit, kMaximumRegisteredPages> pages = {};
 		std::size_t pageCount = 0;
