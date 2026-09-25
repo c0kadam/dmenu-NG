@@ -363,6 +363,7 @@ public:
 		std::size_t groupDepth;
 		bool value;
 		bool enabled;
+		std::string_view semanticId;
 	};
 
 	struct SliderVisit
@@ -378,6 +379,7 @@ public:
 		float max;
 		float step;
 		bool enabled;
+		std::string_view semanticId;
 	};
 
 	struct SliderUpdate
@@ -467,6 +469,7 @@ public:
 		bool capturing;
 		bool mapped;
 		bool enabled;
+		std::string_view semanticId;
 	};
 
 	enum class KeymapAction

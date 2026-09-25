@@ -73,7 +73,8 @@ namespace
 	constexpr float kKeymapTableWidth = 680.0f;
 	constexpr float kLabelWeight = 0.46f;
 	constexpr float kControlWeight = 0.54f;
-	constexpr float kSubsectionIndent = 14.0f;
+	constexpr float kSubsectionIndent = 10.0f;
+	constexpr float kSubsectionContentIndent = 6.0f;
 	constexpr ImGuiMCP::ImVec4 kSteel{ 0.12f, 0.20f, 0.28f, 0.96f };
 	constexpr ImGuiMCP::ImVec4 kSteelHover{ 0.17f, 0.29f, 0.40f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kSteelActive{ 0.20f, 0.35f, 0.47f, 1.0f };
@@ -82,7 +83,11 @@ namespace
 	constexpr ImGuiMCP::ImVec4 kBlue{ 0.29f, 0.61f, 0.89f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kBlueActive{ 0.44f, 0.72f, 0.95f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kGold{ 0.85f, 0.66f, 0.36f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kCyan{ 0.45f, 0.74f, 0.91f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kBorder{ 0.23f, 0.33f, 0.42f, 0.85f };
+	constexpr ImGuiMCP::ImVec4 kSubsectionSurface{ 0.12f, 0.24f, 0.32f, 0.52f };
+	constexpr ImGuiMCP::ImVec4 kSubsectionHover{ 0.18f, 0.31f, 0.41f, 0.78f };
+	constexpr ImGuiMCP::ImVec4 kSliderTrack{ 0.09f, 0.16f, 0.22f, 0.58f };
 
 	// Stable Font Awesome Free glyphs used by the framework's solid font.
 	constexpr unsigned int kPageIcon = 0xf009;      // th-large
@@ -95,6 +100,12 @@ namespace
 	constexpr unsigned int kKeyboardIcon = 0xf11c;  // keyboard
 	constexpr unsigned int kActionIcon = 0xf0e7;    // bolt
 	constexpr unsigned int kGroupsIcon = 0xf0e8;    // sitemap
+	constexpr unsigned int kGamepadIcon = 0xf11b;   // gamepad
+	constexpr unsigned int kPointerIcon = 0xf05b;   // crosshairs
+	constexpr unsigned int kSizeIcon = 0xf065;      // expand
+	constexpr unsigned int kSoundIcon = 0xf028;     // volume-up
+	constexpr unsigned int kTimingIcon = 0xf017;    // clock
+	constexpr unsigned int kOpacityIcon = 0xf042;   // adjust
 
 	enum class VisualKind : std::size_t
 	{
@@ -109,12 +120,26 @@ namespace
 		Count
 	};
 
+	enum class SemanticRole : std::size_t
+	{
+		None,
+		Gamepad,
+		Pointer,
+		Size,
+		Sound,
+		Timing,
+		Opacity,
+		Image,
+		Count
+	};
+
 	struct GroupStats
 	{
 		std::size_t directLeaves = 0;
 		std::size_t directGroups = 0;
 		std::size_t descendantLeaves = 0;
 		std::array<std::size_t, static_cast<std::size_t>(VisualKind::Count)> kinds{};
+		std::array<std::size_t, static_cast<std::size_t>(SemanticRole::Count)> semantics{};
 		std::string_view soleLeafLabel;
 	};
 
@@ -122,8 +147,10 @@ namespace
 	{
 		bool hasHeading = false;
 		bool indented = false;
+		bool contentIndented = false;
 		bool major = false;
 		bool subsection = false;
+		bool interactiveSubsection = false;
 	};
 
 	struct PresentationState
@@ -134,6 +161,8 @@ namespace
 		std::string_view pageDescription;
 		std::size_t headingDepth = 0;
 		std::size_t majorCount = 0;
+		std::size_t subsectionCount = 0;
+		std::size_t interactiveDepth = 0;
 	};
 
 	bool g_hasThemeStyles = false;
@@ -168,16 +197,6 @@ namespace
 		return a_color;
 	}
 
-	ImGuiMCP::ImVec4 Blend(ImGuiMCP::ImVec4 a_base, ImGuiMCP::ImVec4 a_accent, float a_amount)
-	{
-		return {
-			a_base.x + (a_accent.x - a_base.x) * a_amount,
-			a_base.y + (a_accent.y - a_base.y) * a_amount,
-			a_base.z + (a_accent.z - a_base.z) * a_amount,
-			a_base.w
-		};
-	}
-
 	std::string UpperAscii(std::string_view a_text)
 	{
 		std::string result(a_text);
@@ -187,6 +206,34 @@ namespace
 			}
 		}
 		return result;
+	}
+
+	SemanticRole SemanticForId(std::string_view a_id)
+	{
+		const auto id = UpperAscii(a_id);
+		const auto has = [&](std::string_view term) { return id.find(term) != std::string::npos; };
+		if (has("GAMEPAD") || has("CONTROLLER") || has("DPAD")) return SemanticRole::Gamepad;
+		if (has("CURSOR") || has("POINTER") || has("MOUSE") || has("POSITION") || has("OFFSET")) return SemanticRole::Pointer;
+		if (has("VOLUME") || has("SOUND") || has("AUDIO")) return SemanticRole::Sound;
+		if (has("DELAY") || has("DURATION") || has("COOLDOWN") || has("TIME")) return SemanticRole::Timing;
+		if (has("OPACITY") || has("ALPHA")) return SemanticRole::Opacity;
+		if (has("RADIUS") || has("DIAMETER") || has("SIZE") || has("SCALE") || has("WIDTH") || has("HEIGHT")) return SemanticRole::Size;
+		if (has("SKIN") || has("TEXTURE") || has("IMAGE") || has("RESKIN")) return SemanticRole::Image;
+		return SemanticRole::None;
+	}
+
+	unsigned int IconForSemantic(SemanticRole a_role)
+	{
+		switch (a_role) {
+		case SemanticRole::Gamepad: return kGamepadIcon;
+		case SemanticRole::Pointer: return kPointerIcon;
+		case SemanticRole::Size: return kSizeIcon;
+		case SemanticRole::Sound: return kSoundIcon;
+		case SemanticRole::Timing: return kTimingIcon;
+		case SemanticRole::Opacity: return kOpacityIcon;
+		case SemanticRole::Image: return kColorIcon;
+		default: return 0;
+		}
 	}
 
 	unsigned int IconForKind(VisualKind a_kind)
@@ -205,13 +252,24 @@ namespace
 
 	unsigned int IconForGroup(const GroupStats& a_stats)
 	{
+		std::size_t bestSemantic = 0;
+		unsigned int semanticIcon = 0;
+		for (std::size_t index = 1; index < static_cast<std::size_t>(SemanticRole::Count); ++index) {
+			if (a_stats.semantics[index] > bestSemantic) {
+				bestSemantic = a_stats.semantics[index];
+				semanticIcon = IconForSemantic(static_cast<SemanticRole>(index));
+			}
+		}
+		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
+		if (bestSemantic >= 2 && bestSemantic * 3 >= interactiveLeaves) {
+			return semanticIcon;
+		}
 		constexpr std::array priority{
 			VisualKind::Keymap, VisualKind::Color, VisualKind::Slider,
 			VisualKind::Button, VisualKind::Textbox, VisualKind::Dropdown, VisualKind::Checkbox
 		};
 		std::size_t best = 0;
 		unsigned int icon = a_stats.directGroups > 1 ? kGroupsIcon : kSettingsIcon;
-		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
 		for (const auto kind : priority) {
 			const auto count = a_stats.kinds[static_cast<std::size_t>(kind)];
 			if (count > best) {
@@ -221,6 +279,14 @@ namespace
 		}
 		return best >= 2 && (best * 2 >= interactiveLeaves || (best >= 3 && best * 3 >= interactiveLeaves)) ?
 			icon : (a_stats.directGroups > 1 ? kGroupsIcon : kSettingsIcon);
+	}
+
+	bool ShouldCollapseSubsection(const GroupStats& a_stats)
+	{
+		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
+		const auto keymaps = a_stats.kinds[static_cast<std::size_t>(VisualKind::Keymap)];
+		return interactiveLeaves >= 4 &&
+			(a_stats.directLeaves >= 3 || a_stats.directGroups == 0 || keymaps >= 5);
 	}
 
 	void DrawIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
@@ -234,7 +300,7 @@ namespace
 		FontAwesome::Pop();
 	}
 
-	void DrawHeaderIcon(unsigned int a_codepoint)
+	void DrawHeaderIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
 	{
 		if (!g_hasFontAwesome || !g_hasIconOverlay) {
 			return;
@@ -242,7 +308,7 @@ namespace
 		const auto afterHeader = ImGuiMCP::GetCursorScreenPos();
 		const auto header = ImGuiMCP::GetItemRectMin();
 		ImGuiMCP::SetCursorScreenPos({ header.x + ImGuiMCP::GetFrameHeight() * 0.94f, header.y + 4.0f });
-		DrawIcon(a_codepoint, kGold);
+		DrawIcon(a_codepoint, a_color);
 		ImGuiMCP::SetCursorScreenPos(afterHeader);
 	}
 
@@ -257,8 +323,10 @@ namespace
 			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, kSteelActive);
 			return 3;
 		}
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg, kControlSurface);
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgHovered, kControlHover);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg,
+			a_kind == VisualKind::Slider ? kSliderTrack : kControlSurface);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgHovered,
+			a_kind == VisualKind::Slider ? WithAlpha(kControlHover, 0.78f) : kControlHover);
 		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgActive, kSteelHover);
 		if (a_kind == VisualKind::Slider) {
 			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrab, kBlue);
@@ -324,7 +392,7 @@ namespace
 	}
 
 	RowLayout BeginRow(const void* a_identity, const char* a_label, VisualKind a_kind,
-		float a_tableWidth = kStackedRowWidth)
+		unsigned int a_icon = 0, float a_tableWidth = kStackedRowWidth)
 	{
 		ImGuiMCP::PushID(a_identity);
 		RowLayout row{};
@@ -340,7 +408,7 @@ namespace
 		}
 		ImGuiMCP::AlignTextToFramePadding();
 		if (g_hasFontAwesome) {
-			DrawIcon(IconForKind(a_kind), WithAlpha(kGold, 0.58f));
+			DrawIcon(a_icon ? a_icon : IconForKind(a_kind), WithAlpha(kGold, 0.58f));
 			ImGuiMCP::SameLine();
 		}
 		ImGuiMCP::TextWrapped("%s", TextOrEmpty(a_label));
@@ -381,8 +449,8 @@ namespace
 		const auto found = a_state.groupStats.find(a_group.identity);
 		const GroupStats stats = found == a_state.groupStats.end() ? GroupStats{} : found->second;
 		const bool repeatsPage = a_state.headingDepth == 0 && RepeatsPageName(TextOrEmpty(a_group.label), a_state.pageName);
-		const bool singleLeafWrapper = stats.descendantLeaves == 1 && stats.directGroups == 0 &&
-			(a_state.headingDepth != 0 || stats.soleLeafLabel == TextOrEmpty(a_group.label));
+		const bool singleLeafWrapper = a_state.headingDepth == 0 && stats.descendantLeaves == 1 &&
+			stats.directGroups == 0 && stats.soleLeafLabel == TextOrEmpty(a_group.label);
 		GroupFrame frame{};
 		bool showChildren = true;
 		if (!repeatsPage && stats.descendantLeaves != 0) {
@@ -403,9 +471,10 @@ namespace
 					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 8.0f, 5.0f });
 					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FrameBorderSize, 1.0f);
 				}
+				a_state.subsectionCount = 0;
 				ImGuiMCP::SetNextItemOpen(a_state.majorCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
 				showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
-				DrawHeaderIcon(IconForGroup(stats));
+				DrawHeaderIcon(IconForGroup(stats), kGold);
 				if (g_hasStyleVars) {
 					ImGuiMCP::PopStyleVar(2);
 				}
@@ -421,22 +490,46 @@ namespace
 			} else {
 				ImGuiMCP::Indent(kSubsectionIndent);
 				frame.indented = true;
-				const auto titleColor = a_state.headingDepth == 1 || !g_hasThemeStyles ? kGold :
-					Blend(kGold, ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.28f);
-				if (g_hasFontAwesome) {
-					DrawIcon(IconForGroup(stats), titleColor);
-					ImGuiMCP::SameLine();
-				}
-				ImGuiMCP::TextColored(titleColor, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
-				if (g_hasThemeStyles) {
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, kBorder);
-				}
-				ImGuiMCP::Separator();
-				if (g_hasThemeStyles) {
-					ImGuiMCP::PopStyleColor();
+				const bool collapsible = g_hasThemeStyles && a_state.interactiveDepth == 0 && ShouldCollapseSubsection(stats);
+				if (collapsible) {
+					const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
+						UpperAscii(TextOrEmpty(a_group.label)) + "###subsection";
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kCyan);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, kSubsectionSurface);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, kSubsectionHover);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, kSteelHover);
+					if (g_hasStyleVars) {
+						ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 4.0f, 3.0f });
+					}
+					ImGuiMCP::SetNextItemOpen(a_state.subsectionCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
+					showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
+					DrawHeaderIcon(IconForGroup(stats), kCyan);
+					if (g_hasStyleVars) {
+						ImGuiMCP::PopStyleVar();
+					}
+					ImGuiMCP::PopStyleColor(4);
+					frame.interactiveSubsection = true;
+					++a_state.interactiveDepth;
+				} else {
+					if (g_hasFontAwesome) {
+						DrawIcon(IconForGroup(stats), kCyan);
+						ImGuiMCP::SameLine();
+					}
+					ImGuiMCP::TextColored(kCyan, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
+					if (g_hasThemeStyles) {
+						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.46f));
+					}
+					ImGuiMCP::Separator();
+					if (g_hasThemeStyles) {
+						ImGuiMCP::PopStyleColor();
+					}
 				}
 				frame.hasHeading = true;
 				frame.subsection = true;
+				if (showChildren) {
+					ImGuiMCP::Indent(kSubsectionContentIndent);
+					frame.contentIndented = true;
+				}
 			}
 			if (frame.hasHeading && showChildren && a_group.description && a_group.description[0] != '\0') {
 				SecondaryText(a_group.description);
@@ -456,6 +549,12 @@ namespace
 		if (frame.hasHeading) {
 			--a_state.headingDepth;
 		}
+		if (frame.interactiveSubsection) {
+			--a_state.interactiveDepth;
+		}
+		if (frame.contentIndented) {
+			ImGuiMCP::Unindent(kSubsectionContentIndent);
+		}
 		if (frame.indented) {
 			ImGuiMCP::Unindent(kSubsectionIndent);
 		}
@@ -470,7 +569,7 @@ namespace
 	{
 		std::unordered_map<const void*, GroupStats> stats;
 		std::vector<const void*> groupPath;
-		const auto countLeaf = [&](const char* label, VisualKind kind) {
+		const auto countLeaf = [&](const char* label, VisualKind kind, SemanticRole role = SemanticRole::None) {
 			if (!groupPath.empty()) {
 				auto& group = stats[groupPath.back()];
 				++group.directLeaves;
@@ -479,6 +578,9 @@ namespace
 					auto& ancestor = stats[identity];
 					++ancestor.descendantLeaves;
 					++ancestor.kinds[static_cast<std::size_t>(kind)];
+					if (role != SemanticRole::None) {
+						++ancestor.semantics[static_cast<std::size_t>(role)];
+					}
 				}
 			}
 		};
@@ -495,16 +597,22 @@ namespace
 			return true;
 		};
 		callbacks.endGroup = [&](const ModSettings::GroupVisit&) { groupPath.pop_back(); };
-		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> { countLeaf(visit.label, VisualKind::Checkbox); return std::nullopt; };
+		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> {
+			countLeaf(visit.label, VisualKind::Checkbox, SemanticForId(visit.semanticId));
+			return std::nullopt;
+		};
 		callbacks.slider = [&](const ModSettings::SliderVisit& visit) {
-			countLeaf(visit.label, VisualKind::Slider);
+			countLeaf(visit.label, VisualKind::Slider, SemanticForId(visit.semanticId));
 			return ModSettings::SliderUpdate{};
 		};
 		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> { countLeaf(visit.label, VisualKind::Dropdown); return std::nullopt; };
 		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) { countLeaf(visit.label, VisualKind::Textbox); return ModSettings::TextboxUpdate{}; };
 		callbacks.text = [&](const ModSettings::TextVisit& visit) { countLeaf(visit.label, VisualKind::Text); };
 		callbacks.color = [&](const ModSettings::ColorVisit& visit) { countLeaf(visit.label, VisualKind::Color); return ModSettings::ColorUpdate{}; };
-		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) { countLeaf(visit.label, VisualKind::Keymap); return ModSettings::KeymapAction::None; };
+		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
+			countLeaf(visit.label, VisualKind::Keymap, SemanticForId(visit.semanticId));
+			return ModSettings::KeymapAction::None;
+		};
 		callbacks.button = [&](const ModSettings::ButtonVisit& visit) { countLeaf(visit.label, VisualKind::Button); return false; };
 		ModSettings::VisitPageSettings(a_pageIdentity, callbacks);
 		return stats;
@@ -513,7 +621,8 @@ namespace
 	std::optional<bool> DrawCheckbox(const ModSettings::CheckboxVisit& a_checkbox)
 	{
 		bool value = a_checkbox.value;
-		const RowLayout row = BeginRow(a_checkbox.identity, a_checkbox.label, VisualKind::Checkbox);
+		const RowLayout row = BeginRow(a_checkbox.identity, a_checkbox.label, VisualKind::Checkbox,
+			IconForSemantic(SemanticForId(a_checkbox.semanticId)));
 		if (!a_checkbox.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
@@ -538,13 +647,21 @@ namespace
 		char displayValue[64] = {};
 		std::snprintf(displayValue, sizeof(displayValue), "%g", a_slider.value);
 
-		const RowLayout row = BeginRow(a_slider.identity, a_slider.label, VisualKind::Slider);
+		const RowLayout row = BeginRow(a_slider.identity, a_slider.label, VisualKind::Slider,
+			IconForSemantic(SemanticForId(a_slider.semanticId)));
 		if (!a_slider.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
 		SetControlWidth(row);
 		const int styleColors = PushControlStyle(VisualKind::Slider);
+		if (g_hasStyleVars) {
+			ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FrameRounding, 4.0f);
+			ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_GrabRounding, 4.0f);
+		}
 		ImGuiMCP::SliderInt("##value", &stepIndex, 0, stepCount, displayValue);
+		if (g_hasStyleVars) {
+			ImGuiMCP::PopStyleVar(2);
+		}
 		if (styleColors) {
 			ImGuiMCP::PopStyleColor(styleColors);
 		}
@@ -725,7 +842,8 @@ namespace
 	ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap)
 	{
 		ModSettings::KeymapAction action = ModSettings::KeymapAction::None;
-		const RowLayout row = BeginRow(a_keymap.identity, a_keymap.label, VisualKind::Keymap, kKeymapTableWidth);
+		const RowLayout row = BeginRow(a_keymap.identity, a_keymap.label, VisualKind::Keymap,
+			IconForSemantic(SemanticForId(a_keymap.semanticId)), kKeymapTableWidth);
 		if (!a_keymap.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}

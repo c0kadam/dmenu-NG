@@ -2610,7 +2610,8 @@ void ModSettings::for_each_setting(
 				checkbox->desc.get(),
 				groupDepth,
 				checkbox->value,
-				entryEnabled
+				entryEnabled,
+				checkbox->ini_id
 			};
 			const auto replacement = callbacks.checkbox(visit);
 			if (replacement && entryEnabled && *replacement != checkbox->value) {
@@ -2635,7 +2636,8 @@ void ModSettings::for_each_setting(
 				slider->min,
 				slider->max,
 				slider->step,
-				entryEnabled
+				entryEnabled,
+				slider->ini_id
 			};
 			const SliderUpdate update = callbacks.slider(visit);
 			if (entryEnabled) {
@@ -2750,7 +2752,8 @@ void ModSettings::for_each_setting(
 				groupDepth,
 				keyMapListening == keymap && g_keyMapCaptureCommitsImmediately,
 				keymap->value != 0,
-				entryEnabled
+				entryEnabled,
+				keymap->ini_id
 			};
 			const KeymapAction action = callbacks.keymap(visit);
 			if (!entryEnabled) {
