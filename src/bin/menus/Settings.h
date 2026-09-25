@@ -12,6 +12,8 @@ public:
 	static inline bool lockWindowSize = false;
 
 	static inline float fontScale = 1.f;
+	static inline bool sksemf_jet_black = false;
+	static void SetSkseMenuFrameworkJetBlack(bool a_enabled);
 
 	static inline bool enable_ime_support = false;
 	static inline bool show_ime_composition_overlay = true;

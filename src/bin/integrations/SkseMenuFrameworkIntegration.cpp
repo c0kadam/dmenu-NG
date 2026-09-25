@@ -19,6 +19,7 @@
 #include "../InputListener.h"
 #include "../Utils.h"
 #include "../menus/ModSettings.h"
+#include "../menus/Settings.h"
 
 namespace
 {
@@ -77,20 +78,37 @@ namespace
 	constexpr float kSubsectionIndent = 10.0f;
 	constexpr float kSubsectionContentIndent = 6.0f;
 	constexpr float kMicroContentIndent = 4.0f;
-	constexpr ImGuiMCP::ImVec4 kSteel{ 0.12f, 0.20f, 0.28f, 0.96f };
-	constexpr ImGuiMCP::ImVec4 kSteelHover{ 0.17f, 0.29f, 0.40f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kSteelActive{ 0.20f, 0.35f, 0.47f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kControlSurface{ 0.09f, 0.16f, 0.22f, 0.94f };
-	constexpr ImGuiMCP::ImVec4 kControlHover{ 0.15f, 0.25f, 0.34f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kBlue{ 0.29f, 0.61f, 0.89f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kBlueActive{ 0.44f, 0.72f, 0.95f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kGold{ 0.85f, 0.66f, 0.36f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kCyan{ 0.45f, 0.74f, 0.91f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kMicroCyan{ 0.39f, 0.65f, 0.80f, 1.0f };
-	constexpr ImGuiMCP::ImVec4 kBorder{ 0.23f, 0.33f, 0.42f, 0.85f };
-	constexpr ImGuiMCP::ImVec4 kSubsectionSurface{ 0.12f, 0.24f, 0.32f, 0.52f };
-	constexpr ImGuiMCP::ImVec4 kSubsectionHover{ 0.18f, 0.31f, 0.41f, 0.78f };
-	constexpr ImGuiMCP::ImVec4 kSliderTrack{ 0.09f, 0.16f, 0.22f, 0.58f };
+	constexpr std::uint32_t kMouseLeftInput = 256;
+	enum class FrontendTheme { SteelGold, JetBlack };
+	struct ThemePalette
+	{
+		ImGuiMCP::ImVec4 majorSurface, majorHover, majorActive;
+		ImGuiMCP::ImVec4 subsectionSurface, subsectionHover;
+		ImGuiMCP::ImVec4 controlSurface, controlHover, sliderTrack, border;
+		ImGuiMCP::ImVec4 interaction, interactionActive;
+		ImGuiMCP::ImVec4 structuralAccent, subsectionAccent, microAccent;
+		ImGuiMCP::ImVec4 primaryText, secondaryText;
+	};
+	constexpr ThemePalette kSteelGold{
+		{ 0.12f, 0.20f, 0.28f, 0.96f }, { 0.17f, 0.29f, 0.40f, 1.0f }, { 0.20f, 0.35f, 0.47f, 1.0f },
+		{ 0.12f, 0.24f, 0.32f, 0.52f }, { 0.18f, 0.31f, 0.41f, 0.78f },
+		{ 0.09f, 0.16f, 0.22f, 0.94f }, { 0.15f, 0.25f, 0.34f, 1.0f }, { 0.09f, 0.16f, 0.22f, 0.58f },
+		{ 0.23f, 0.33f, 0.42f, 0.85f },
+		{ 0.29f, 0.61f, 0.89f, 1.0f }, { 0.44f, 0.72f, 0.95f, 1.0f },
+		{ 0.85f, 0.66f, 0.36f, 1.0f }, { 0.45f, 0.74f, 0.91f, 1.0f }, { 0.39f, 0.65f, 0.80f, 1.0f },
+		{ 0.94f, 0.94f, 0.94f, 1.0f }, { 0.94f, 0.94f, 0.94f, 0.72f }
+	};
+	constexpr ThemePalette kJetBlack{
+		{ 0.063f, 0.071f, 0.082f, 0.98f }, { 0.102f, 0.114f, 0.129f, 1.0f }, { 0.133f, 0.149f, 0.169f, 1.0f },
+		{ 0.075f, 0.082f, 0.090f, 0.88f }, { 0.133f, 0.145f, 0.157f, 0.95f },
+		{ 0.055f, 0.067f, 0.078f, 0.98f }, { 0.094f, 0.110f, 0.125f, 1.0f }, { 0.055f, 0.067f, 0.078f, 0.90f },
+		{ 0.204f, 0.220f, 0.239f, 0.95f },
+		{ 0.675f, 0.537f, 0.302f, 1.0f }, { 0.784f, 0.663f, 0.431f, 1.0f },
+		{ 0.776f, 0.631f, 0.357f, 1.0f }, { 0.720f, 0.642f, 0.494f, 1.0f }, { 0.647f, 0.623f, 0.565f, 1.0f },
+		{ 0.925f, 0.925f, 0.925f, 1.0f }, { 0.624f, 0.639f, 0.659f, 1.0f }
+	};
+	FrontendTheme CurrentTheme() { return Settings::sksemf_jet_black ? FrontendTheme::JetBlack : FrontendTheme::SteelGold; }
+	const ThemePalette& Palette() { return CurrentTheme() == FrontendTheme::JetBlack ? kJetBlack : kSteelGold; }
 
 	// Stable Font Awesome Free glyphs used by the framework's solid font.
 	constexpr unsigned int kPageIcon = 0xf009;      // th-large
@@ -425,10 +443,10 @@ namespace
 	{
 		const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
 			UpperAscii(TextOrEmpty(a_label)) + "###micro";
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kMicroCyan);
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, WithAlpha(kMicroCyan, 0.0f));
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, WithAlpha(kMicroCyan, 0.11f));
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, WithAlpha(kMicroCyan, 0.18f));
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, Palette().microAccent);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, WithAlpha(Palette().microAccent, 0.0f));
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, WithAlpha(Palette().microAccent, 0.11f));
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, WithAlpha(Palette().microAccent, 0.18f));
 		if (g_hasStyleVars) {
 			ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 2.0f, 1.0f });
 		}
@@ -437,12 +455,12 @@ namespace
 			ImGuiMCP::TreeNodeEx(label.c_str(),
 				ImGuiMCP::ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiMCP::ImGuiTreeNodeFlags_SpanAvailWidth) :
 			ImGuiMCP::CollapsingHeader(label.c_str());
-		DrawHeaderIcon(IconForGroup(a_stats), WithAlpha(kMicroCyan, 0.85f), true);
+		DrawHeaderIcon(IconForGroup(a_stats), WithAlpha(Palette().microAccent, 0.85f), true);
 		if (g_hasStyleVars) {
 			ImGuiMCP::PopStyleVar();
 		}
 		ImGuiMCP::PopStyleColor(4);
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.25f));
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(Palette().subsectionAccent, 0.25f));
 		ImGuiMCP::Separator();
 		ImGuiMCP::PopStyleColor();
 		return open;
@@ -454,23 +472,23 @@ namespace
 			return 0;
 		}
 		if (a_kind == VisualKind::Button || a_kind == VisualKind::Keymap) {
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, kSteel);
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, kSteelHover);
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, kSteelActive);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, Palette().majorSurface);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, Palette().majorHover);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, Palette().majorActive);
 			return 3;
 		}
 		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg,
-			a_kind == VisualKind::Slider ? kSliderTrack : kControlSurface);
+			a_kind == VisualKind::Slider ? Palette().sliderTrack : Palette().controlSurface);
 		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgHovered,
-			a_kind == VisualKind::Slider ? WithAlpha(kControlHover, 0.78f) : kControlHover);
-		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgActive, kSteelHover);
+			a_kind == VisualKind::Slider ? WithAlpha(Palette().controlHover, 0.78f) : Palette().controlHover);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgActive, Palette().majorHover);
 		if (a_kind == VisualKind::Slider) {
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrab, kBlue);
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrabActive, kBlueActive);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrab, Palette().interaction);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrabActive, Palette().interactionActive);
 			return 5;
 		}
 		if (a_kind == VisualKind::Checkbox) {
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_CheckMark, kBlueActive);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_CheckMark, Palette().interactionActive);
 			return 4;
 		}
 		return 3;
@@ -482,7 +500,8 @@ namespace
 			return;
 		}
 		if (g_hasThemeStyles) {
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.72f));
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text,
+				CurrentTheme() == FrontendTheme::SteelGold ? WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.72f) : Palette().secondaryText);
 		}
 		ImGuiMCP::TextWrapped("%s", a_text);
 		if (g_hasThemeStyles) {
@@ -494,7 +513,9 @@ namespace
 	{
 		if (g_hasThemeStyles) {
 			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text,
-				WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), a_emphasized ? 1.0f : 0.68f));
+				a_emphasized ? (CurrentTheme() == FrontendTheme::SteelGold ?
+					ThemeColor(ImGuiMCP::ImGuiCol_Text) : Palette().primaryText) :
+					(CurrentTheme() == FrontendTheme::SteelGold ? WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.68f) : Palette().secondaryText));
 		}
 		ImGuiMCP::TextUnformatted("?");
 		if (g_hasThemeStyles) {
@@ -544,7 +565,8 @@ namespace
 		}
 		ImGuiMCP::AlignTextToFramePadding();
 		if (g_hasFontAwesome) {
-			DrawIcon(a_icon ? a_icon : IconForKind(a_kind), WithAlpha(kGold, 0.58f));
+			DrawIcon(a_icon ? a_icon : IconForKind(a_kind), WithAlpha(Palette().structuralAccent,
+				CurrentTheme() == FrontendTheme::JetBlack ? 0.85f : 0.58f));
 			ImGuiMCP::SameLine();
 		}
 		ImGuiMCP::TextWrapped("%s", TextOrEmpty(a_label));
@@ -621,11 +643,12 @@ namespace
 				const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
 					UpperAscii(TextOrEmpty(a_group.label)) + "###section";
 				if (g_hasThemeStyles) {
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, ThemeColor(ImGuiMCP::ImGuiCol_Text));
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, kSteel);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, kSteelHover);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, kSteelActive);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Border, kBorder);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text,
+						CurrentTheme() == FrontendTheme::SteelGold ? ThemeColor(ImGuiMCP::ImGuiCol_Text) : Palette().primaryText);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, Palette().majorSurface);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, Palette().majorHover);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, Palette().majorActive);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Border, Palette().border);
 				}
 				if (g_hasStyleVars) {
 					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 8.0f, 5.0f });
@@ -634,7 +657,7 @@ namespace
 				a_state.subsectionCount = 0;
 				ImGuiMCP::SetNextItemOpen(a_state.majorCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
 				showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
-				DrawHeaderIcon(IconForGroup(stats), kGold);
+				DrawHeaderIcon(IconForGroup(stats), Palette().structuralAccent);
 				if (g_hasStyleVars) {
 					ImGuiMCP::PopStyleVar(2);
 				}
@@ -654,16 +677,16 @@ namespace
 				if (collapsible) {
 					const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
 						UpperAscii(TextOrEmpty(a_group.label)) + "###subsection";
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kCyan);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, kSubsectionSurface);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, kSubsectionHover);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, kSteelHover);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, Palette().subsectionAccent);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, Palette().subsectionSurface);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, Palette().subsectionHover);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, Palette().majorHover);
 					if (g_hasStyleVars) {
 						ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 4.0f, 3.0f });
 					}
 					ImGuiMCP::SetNextItemOpen(a_state.subsectionCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
 					showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
-					DrawHeaderIcon(IconForGroup(stats), kCyan);
+					DrawHeaderIcon(IconForGroup(stats), Palette().subsectionAccent);
 					if (g_hasStyleVars) {
 						ImGuiMCP::PopStyleVar();
 					}
@@ -672,12 +695,12 @@ namespace
 					++a_state.interactiveDepth;
 				} else {
 					if (g_hasFontAwesome) {
-						DrawIcon(IconForGroup(stats), kCyan);
+						DrawIcon(IconForGroup(stats), Palette().subsectionAccent);
 						ImGuiMCP::SameLine();
 					}
-					ImGuiMCP::TextColored(kCyan, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
+					ImGuiMCP::TextColored(Palette().subsectionAccent, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
 					if (g_hasThemeStyles) {
-						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.46f));
+						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(Palette().subsectionAccent, 0.46f));
 					}
 					ImGuiMCP::Separator();
 					if (g_hasThemeStyles) {
@@ -698,14 +721,14 @@ namespace
 					showChildren = DrawMicroDisclosure(a_group.label, stats, OnlyMeaningfulChild(a_state));
 				} else {
 					if (g_hasFontAwesome) {
-						DrawIcon(IconForGroup(stats), WithAlpha(kMicroCyan, 0.85f));
+						DrawIcon(IconForGroup(stats), WithAlpha(Palette().microAccent, 0.85f));
 						ImGuiMCP::SameLine();
 					}
-					ImGuiMCP::TextColored(kMicroCyan, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
+					ImGuiMCP::TextColored(Palette().microAccent, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
 				}
 				if (!collapsible) {
 					if (g_hasThemeStyles) {
-						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.25f));
+						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(Palette().subsectionAccent, 0.25f));
 					}
 					ImGuiMCP::Separator();
 					if (g_hasThemeStyles) {
@@ -1103,6 +1126,9 @@ namespace
 			g_cancelTarget.renderedThisPage = true;
 			g_cancelTarget.renderedFrame = g_hasFrameCount ? ImGuiMCP::GetFrameCount() : -1;
 			if (action == ModSettings::KeymapAction::CancelCapture) {
+				if (g_cancelTarget.passingMouseClick) {
+					ModSettings::ObserveKeymapCaptureInput(kMouseLeftInput, false);
+				}
 				g_cancelTarget = {};
 			}
 			controlHelp = ItemRequestsHelp();
@@ -1182,20 +1208,34 @@ namespace
 		if (ownsCancelTarget) {
 			g_cancelTarget.renderedThisPage = false;
 		}
+		const bool jetStyle = g_hasThemeStyles && CurrentTheme() == FrontendTheme::JetBlack;
+		if (jetStyle) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, Palette().primaryText);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Border, Palette().border);
+			if (g_hasStyleVars) {
+				ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FrameBorderSize, 1.0f);
+			}
+		}
 		PresentationState presentation{};
 		presentation.groupStats = CollectGroupStats(a_pageIdentity, a_pageName, presentation.pageDescription,
 			presentation.virtualStats);
 		presentation.pageName = a_pageName;
 		if (g_hasFontAwesome) {
-			DrawIcon(kPageIcon, kGold);
+			DrawIcon(kPageIcon, Palette().structuralAccent);
 			ImGuiMCP::SameLine();
 		}
 		const auto title = UpperAscii(a_pageName);
 		ImGuiMCP::TextUnformatted(title.c_str());
+		const int themeButtonColors = PushControlStyle(VisualKind::Button);
+		const bool toggleTheme = ImGuiMCP::Button(CurrentTheme() == FrontendTheme::JetBlack ?
+			"Theme: Jet Black##frontend_theme" : "Theme: Steel Gold##frontend_theme");
+		if (themeButtonColors) {
+			ImGuiMCP::PopStyleColor(themeButtonColors);
+		}
 		SecondaryText(presentation.pageDescription.data());
 		ImGuiMCP::Spacing();
 		if (g_hasThemeStyles) {
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, kBorder);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, Palette().border);
 		}
 		ImGuiMCP::Separator();
 		if (g_hasThemeStyles) {
@@ -1234,6 +1274,15 @@ namespace
 		}
 		if (ownsCancelTarget && !g_cancelTarget.renderedThisPage) {
 			g_cancelTarget = {};
+		}
+		if (jetStyle) {
+			if (g_hasStyleVars) {
+				ImGuiMCP::PopStyleVar();
+			}
+			ImGuiMCP::PopStyleColor(2);
+		}
+		if (toggleTheme) {
+			Settings::SetSkseMenuFrameworkJetBlack(CurrentTheme() != FrontendTheme::JetBlack);
 		}
 	}
 

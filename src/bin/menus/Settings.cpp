@@ -117,6 +117,7 @@ namespace ini
 		loader.save(Settings::key_toggle_dmenu_mkb, "key_toggle_dmenu");
 		loader.save(Settings::key_toggle_modifier_mkb, "key_toggle_modifier");
 		loader.save(Settings::fontScale, "fontScale");
+		loader.save(Settings::sksemf_jet_black, "sksemf_jet_black");
 		loader.setActiveSection("IME");
 		loader.save(Settings::enable_ime_support, "EnableIMESupport");
 		loader.save(Settings::show_ime_composition_overlay, "ShowCompositionOverlay");
@@ -160,6 +161,7 @@ namespace ini
 		loader.load(Settings::lockWindowSize, "lockWindowSize");
 		loader.load(Settings::lockWindowPos, "lockWindowPos");
 		loader.load(Settings::fontScale, "fontScale");
+		loader.load(Settings::sksemf_jet_black, "sksemf_jet_black");
 
 		uint32_t legacyToggle = kUnsetCaptureValue;
 		uint32_t legacyModifier = kUnsetCaptureValue;
@@ -507,6 +509,15 @@ void Settings::submitKeyCapture(uint32_t inputCode)
 bool Settings::IsCapturingInput()
 {
 	return s_pendingKeyCapture != nullptr;
+}
+
+void Settings::SetSkseMenuFrameworkJetBlack(bool a_enabled)
+{
+	sksemf_jet_black = a_enabled;
+	settingsLoader loader(SETTINGFILE_PATH);
+	loader.setActiveSection("UI");
+	loader.save(sksemf_jet_black, "sksemf_jet_black");
+	loader.flush();
 }
 
 void Settings::RequestPrimaryActionFocus()
