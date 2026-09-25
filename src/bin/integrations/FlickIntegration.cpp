@@ -155,9 +155,15 @@ namespace
 		FUCK::PopStyleColor();
 	}
 
-	void Heading(std::string_view a_label, float a_scale, ImVec4 a_color, unsigned int a_icon = 0)
+	void PushRelativeFont(float a_baseFontSize, float a_scale)
 	{
-		FUCK::PushFontScaled(FUCK::GetFont(FUCK::Font::kRegular), a_scale);
+		FUCK::PushFont(FUCK::GetFont(FUCK::Font::kRegular), a_baseFontSize * a_scale);
+	}
+
+	void Heading(std::string_view a_label, float a_baseFontSize, float a_scale, ImVec4 a_color,
+		unsigned int a_icon = 0)
+	{
+		PushRelativeFont(a_baseFontSize, a_scale);
 		if (a_icon) {
 			const auto icon = Glyph(a_icon);
 			FUCK::TextColored(kVanilla.gold, "%s", icon.c_str());
@@ -231,6 +237,7 @@ namespace
 		std::vector<GroupFrame> stack;
 		std::string_view pageName;
 		std::string_view description;
+		float baseFontSize = 0.0f;
 		std::size_t depth = 0;
 		std::size_t majorCount = 0;
 		std::size_t subsectionCount = 0;
@@ -251,19 +258,18 @@ namespace
 		return a_state.stack.empty() || !a_state.stack.back().virtualActive || a_state.stack.back().virtualVisible;
 	}
 
-	bool Disclosure(const char* a_label, float a_scale, ImVec4 a_text, ImVec4 a_hover,
-		unsigned int a_icon, bool a_defaultOpen, const char* a_suffix)
+	bool Disclosure(const char* a_label, float a_baseFontSize, float a_scale, ImVec4 a_text,
+		ImVec4 a_hover, unsigned int a_icon, bool a_defaultOpen)
 	{
 		std::string label = a_icon ? Glyph(a_icon) + "  " : std::string{};
 		label += UpperAscii(TextOrEmpty(a_label));
-		label += a_suffix;
-		FUCK::PushFontScaled(FUCK::GetFont(FUCK::Font::kRegular), a_scale);
+		PushRelativeFont(a_baseFontSize, a_scale);
 		FUCK::PushStyleColor(ImGuiCol_Text, a_text);
 		FUCK::PushStyleColor(ImGuiCol_Header, a_scale >= 1.0f ? kVanilla.major : ImVec4{ 0, 0, 0, 0 });
 		FUCK::PushStyleColor(ImGuiCol_HeaderHovered, a_hover);
 		FUCK::PushStyleColor(ImGuiCol_HeaderActive, kVanilla.majorActive);
-		FUCK::SetNextItemOpen(a_defaultOpen, ImGuiCond_FirstUseEver);
-		const bool open = FUCK::CollapsingHeader(label.c_str());
+		const int flags = a_defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+		const bool open = FUCK::CollapsingHeader(label.c_str(), flags);
 		FUCK::PopStyleColor(4);
 		FUCK::PopFont();
 		return open;
@@ -287,20 +293,20 @@ namespace
 				SecondaryText(a_group.description);
 			} else if (a_state.depth == 0) {
 				FUCK::Spacing();
-				open = Disclosure(a_group.label, 1.0f, kVanilla.goldBright, kVanilla.majorHover,
-					IconForGroup(stats, true), a_state.majorCount++ == 0, "###major");
+				open = Disclosure(a_group.label, a_state.baseFontSize, 1.0f, kVanilla.goldBright,
+					kVanilla.majorHover, IconForGroup(stats, true), a_state.majorCount++ == 0);
 				FUCK::Separator();
 				frame.heading = frame.major = true;
 				if (open) frame.indent = kMajorIndent;
 			} else if (a_state.depth == 1) {
 				const bool collapsible = a_state.interactiveDepth == 0 && SettingsPresentation::ShouldCollapseSubsection(stats);
 				if (collapsible) {
-					open = Disclosure(a_group.label, 0.94f, kVanilla.gold, kVanilla.controlHover,
-						IconForGroup(stats), a_state.subsectionCount++ == 0, "###subsection");
+					open = Disclosure(a_group.label, a_state.baseFontSize, 0.94f, kVanilla.gold,
+						kVanilla.controlHover, IconForGroup(stats), a_state.subsectionCount++ == 0);
 					frame.interactiveSubsection = true;
 					++a_state.interactiveDepth;
 				} else {
-					Heading(a_group.label, 0.94f, kVanilla.gold, IconForGroup(stats));
+					Heading(a_group.label, a_state.baseFontSize, 0.94f, kVanilla.gold, IconForGroup(stats));
 				}
 				FUCK::Separator();
 				frame.heading = frame.subsection = true;
@@ -309,10 +315,10 @@ namespace
 				const bool collapsible = a_state.depth == 2 && SettingsPresentation::ShouldCollapseMicro(stats);
 				const unsigned int icon = IconForGroup(stats);
 				if (collapsible) {
-					open = Disclosure(a_group.label, 0.87f, kVanilla.secondary, kVanilla.controlHover,
-						icon, false, "###micro");
+					open = Disclosure(a_group.label, a_state.baseFontSize, 0.87f, kVanilla.secondary,
+						kVanilla.controlHover, icon, false);
 				} else {
-					Heading(a_group.label, 0.87f, kVanilla.secondary, icon);
+					Heading(a_group.label, a_state.baseFontSize, 0.87f, kVanilla.secondary, icon);
 				}
 				frame.heading = true;
 				if (open) frame.indent = kMicroIndent;
@@ -374,8 +380,8 @@ namespace
 			return;
 		}
 		FUCK::PushID(a_text.identity);
-		const bool open = Disclosure(a_text.label, 0.87f, kVanilla.secondary, kVanilla.controlHover,
-			IconForGroup(found->second), false, "###virtual");
+		const bool open = Disclosure(a_text.label, a_state.baseFontSize, 0.87f, kVanilla.secondary,
+			kVanilla.controlHover, IconForGroup(found->second), false);
 		FUCK::PopID();
 		auto& frame = a_state.stack.back();
 		frame.virtualActive = true;
@@ -506,9 +512,10 @@ namespace
 		cancelRendered_ = false;
 		PushPageStyle();
 		RenderState state{};
+		state.baseFontSize = FUCK::GetTextLineHeight();
 		state.pageName = sourceName_;
 		state.groups = CollectGroupStats(page_, sourceName_, state.description, state.virtualGroups);
-		Heading(name_, 1.10f, kVanilla.primary, kGearIcon);
+		Heading(name_, state.baseFontSize, 1.10f, kVanilla.primary, kGearIcon);
 		SecondaryText(state.description.data());
 		FUCK::Separator();
 		FUCK::Spacing();
