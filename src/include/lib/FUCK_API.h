@@ -1,7 +1,27 @@
 #pragma once
 #include <imgui.h>
 
-#define FUCK_API_VERSION 3
+#define FUCK_API_VERSION 4
+
+// ==================================================
+// [ OPTIONAL ] SIMPLEINI HELPERS
+// ==================================================
+//
+// To use the FUCK::PluginSettings and FUCK::INI helpers,
+// #include SimpleIni (via clibutil or vcpkg) and add the
+// enabler macro before including this header:
+//
+// #define FUCK_API_ENABLE_SIMPLEINI
+// #include "FUCK_API.h"
+//
+// ==================================================
+
+#ifndef FUCK_API_ENABLE_SIMPLEINI
+	struct FUCK_SimpleIni_Opaque;
+#	define FUCK_SIMPLEINI_TYPE FUCK_SimpleIni_Opaque
+#else
+#	define FUCK_SIMPLEINI_TYPE CSimpleIniA
+#endif
 
 // ==================================================
 // [ SECTION 1 ] TYPES & INTERFACES
@@ -164,15 +184,6 @@ namespace FUCK
 		kAnyPopup      = kAnyPopupId | kAnyPopupLevel
 	};
 
-	inline WindowFlags      operator|(WindowFlags a, WindowFlags b) { return static_cast<WindowFlags>(static_cast<int>(a) | static_cast<int>(b)); }
-	inline bool             operator&(WindowFlags a, WindowFlags b) { return (static_cast<int>(a) & static_cast<int>(b)) != 0; }
-	inline TableFlags       operator|(TableFlags a, TableFlags b) { return static_cast<TableFlags>(static_cast<int>(a) | static_cast<int>(b)); }
-	inline TableColumnFlags operator|(TableColumnFlags a, TableColumnFlags b) { return static_cast<TableColumnFlags>(static_cast<int>(a) | static_cast<int>(b)); }
-	inline DragDropFlags    operator|(DragDropFlags a, DragDropFlags b) { return static_cast<DragDropFlags>(static_cast<int>(a) | static_cast<int>(b)); }
-	inline bool             operator&(DragDropFlags a, DragDropFlags b) { return (static_cast<int>(a) & static_cast<int>(b)) != 0; }
-	inline ItemFlags        operator|(ItemFlags a, ItemFlags b) { return static_cast<ItemFlags>(static_cast<int>(a) | static_cast<int>(b)); }
-	inline bool             operator&(ItemFlags a, ItemFlags b) { return (static_cast<int>(a) & static_cast<int>(b)) != 0; }
-
 	enum class HotkeyFlags : int
 	{
 		kNone            = 0,
@@ -182,8 +193,31 @@ namespace FUCK
 		kAlwaysHighlight = 1 << 3,
 		kNoModifiers     = 1 << 4
 	};
-	inline HotkeyFlags operator|(HotkeyFlags a, HotkeyFlags b) { return static_cast<HotkeyFlags>(static_cast<int>(a) | static_cast<int>(b)); }
-	inline bool        operator&(HotkeyFlags a, HotkeyFlags b) { return (static_cast<int>(a) & static_cast<int>(b)) != 0; }
+
+// --- Bitwise Operator Macro ---
+#define FUCK_DEFINE_ENUM_BITWISE_OPERATORS(Type)                                                                    \
+	inline Type  operator|(Type a, Type b) { return static_cast<Type>(static_cast<int>(a) | static_cast<int>(b)); } \
+	inline bool  operator&(Type a, Type b) { return (static_cast<int>(a) & static_cast<int>(b)) != 0; }             \
+	inline Type& operator|=(Type& a, Type b)                                                                        \
+	{                                                                                                               \
+		a = static_cast<Type>(static_cast<int>(a) | static_cast<int>(b));                                           \
+		return a;                                                                                                   \
+	}                                                                                                               \
+	inline Type& operator&=(Type& a, Type b)                                                                        \
+	{                                                                                                               \
+		a = static_cast<Type>(static_cast<int>(a) & static_cast<int>(b));                                           \
+		return a;                                                                                                   \
+	}
+
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(WindowFlags)
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(TableFlags)
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(TableColumnFlags)
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(DragDropFlags)
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(ItemFlags)
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(PopupFlags)
+	FUCK_DEFINE_ENUM_BITWISE_OPERATORS(HotkeyFlags)
+
+#undef FUCK_DEFINE_ENUM_BITWISE_OPERATORS
 
 	struct ManagedHotkey
 	{
@@ -334,12 +368,12 @@ struct FUCK_Interface
 	const char* (*GetTranslation)(const char*);
 	void (*SanitizePath)(char*, const char*, size_t);
 	void (*GetPluginConfigPath)(const char*, char*, size_t);
-	void (*LoadPluginINI)(const char* pluginName, void* userdata, void (*callback)(CSimpleIniA&, void*));
-	void (*SavePluginINI)(const char* pluginName, void* userdata, void (*callback)(CSimpleIniA&, void*));
-	void (*LoadPluginINIDefaults)(const char*, void*, void (*)(CSimpleIniA&, void*));
-	void (*LoadPluginKeybinds)(const char* pluginName, void* userdata, void (*callback)(CSimpleIniA&, void*));
-	void (*SavePluginKeybinds)(const char* pluginName, void* userdata, void (*callback)(CSimpleIniA&, void*));
-	void (*LoadPluginKeybindsDefaults)(const char* pluginName, void* userdata, void (*callback)(CSimpleIniA&, void*));
+	void (*LoadPluginINI)(const char* pluginName, void* userdata, void (*callback)(FUCK_SIMPLEINI_TYPE&, void*));
+	void (*SavePluginINI)(const char* pluginName, void* userdata, void (*callback)(FUCK_SIMPLEINI_TYPE&, void*));
+	void (*LoadPluginINIDefaults)(const char*, void*, void (*)(FUCK_SIMPLEINI_TYPE&, void*));
+	void (*LoadPluginKeybinds)(const char* pluginName, void* userdata, void (*callback)(FUCK_SIMPLEINI_TYPE&, void*));
+	void (*SavePluginKeybinds)(const char* pluginName, void* userdata, void (*callback)(FUCK_SIMPLEINI_TYPE&, void*));
+	void (*LoadPluginKeybindsDefaults)(const char* pluginName, void* userdata, void (*callback)(FUCK_SIMPLEINI_TYPE&, void*));
 	void (*PushItemFlag)(FUCK::ItemFlags, bool);
 	void (*PopItemFlag)();
 	void (*HelpMarker)(const char*);
@@ -551,6 +585,30 @@ struct FUCK_Interface
 	void (*DrawScreenTriangleFilled)(const ImVec2&, const ImVec2&, const ImVec2&, ImU32);
 
 	bool (*TreeNodeEx)(const char*, int);
+
+	// Version 4
+	bool (*WorldToScreenLoc)(const float[3], float*, float*);
+
+	void (*AddWindowListener)(void* userdata, void (*callback)(const char* pluginName, const char* windowId, bool opening, void* userdata));
+	void (*RemoveWindowListener)(void* userdata);
+	bool (*IsPluginWindowOpen)(const char* pluginName, const char* windowId);
+
+	void (*TableSetupScrollFreeze)(int, int);
+	void (*TableSetColumnIndex)(int);
+	int (*TableGetColumnIndex)();
+	int (*TableGetRowIndex)();
+	int (*TableGetColumnCount)();
+
+	float (*GetScrollX)();
+	float (*GetScrollY)();
+	float (*GetScrollMaxX)();
+	float (*GetScrollMaxY)();
+	void (*SetScrollX)(float);
+	void (*SetScrollY)(float);
+
+	bool (*SliderAngle)(const char*, float*, float, float, const char*);
+	bool (*VSliderFloat)(const char*, const ImVec2&, float*, float, float, const char*);
+	bool (*VSliderButton)(const char*, const ImVec2&, float*, float, float, const char*, bool, bool, bool*, bool*);
 };
 #pragma pack(pop)
 
@@ -572,7 +630,7 @@ namespace FUCK
 
 	/// @brief Connects to the FUCK Host Framework.
 	/// @param pluginName The exact name of your SKSE plugin. Used automatically for translations and settings directories.
-	inline bool Connect(const char* pluginName, unsigned int a_minVersion = FUCK_API_VERSION)
+	inline bool Connect(const char* pluginName)
 	{
 		if (!pluginName || pluginName[0] == '\0') {
 			SKSE::log::error("FUCK API Connection failed: You must provide a valid pluginName.");
@@ -586,8 +644,10 @@ namespace FUCK
 		if (!fetcher)
 			return false;
 		auto* iface = static_cast<FUCK_Interface*>(fetcher());
-		if (!iface || iface->version < a_minVersion) {
-			SKSE::log::error("FUCK API Version Mismatch: Expected {}, found {}", a_minVersion, iface ? iface->version : 0);
+
+		// Hard enforce that the host is at least the version this header was compiled for
+		if (!iface || iface->version < FUCK_API_VERSION) {
+			SKSE::log::error("FUCK API Version Mismatch: Expected {}, found {}", FUCK_API_VERSION, iface ? iface->version : 0);
 			return false;
 		}
 
@@ -1196,6 +1256,13 @@ namespace FUCK
 		if (auto i = GetInterface())
 			i->ExtendWindowPastBorder();
 	}
+
+	/// @brief Checks if a specific window registered by a plugin is currently open.
+	inline bool IsPluginWindowOpen(const char* pluginName, const char* windowId)
+	{
+		return GetInterface() ? GetInterface()->IsPluginWindowOpen(pluginName, windowId) : false;
+	}
+
 	inline ImVec2 GetWindowPos()
 	{
 		if (auto i = GetInterface()) {
@@ -1270,9 +1337,7 @@ namespace FUCK
 
 	inline bool TreeNode(const char* label, int flags = 0)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->TreeNodeEx)
-			return i->TreeNodeEx(label, flags);
-		return GetInterface() ? GetInterface()->TreeNode(label) : false;
+		return GetInterface() ? GetInterface()->TreeNodeEx(label, flags) : false;
 	}
 
 	inline void TreePop()
@@ -1559,6 +1624,25 @@ namespace FUCK
 		float _height = 0.0f;
 	};
 
+	/// @brief String copy utility.
+	template <size_t N>
+	inline void StringCopy(char (&dest)[N], const char* source)
+	{
+		if (!source) {
+			dest[0] = '\0';
+			return;
+		}
+		strncpy_s(dest, N, source, _TRUNCATE);
+	}
+
+	template <size_t N>
+	inline void StringCopy(char (&dest)[N], const std::string& source)
+	{
+		strncpy_s(dest, N, source.c_str(), _TRUNCATE);
+	}
+
+#ifdef FUCK_API_ENABLE_SIMPLEINI
+
 	/// @brief Convenience wrapper for Plugin INI Loading/Saving.
 	class PluginSettings
 	{
@@ -1631,23 +1715,6 @@ namespace FUCK
 		const char* _pluginName;
 	};
 
-	/// @brief String copy utility.
-	template <size_t N>
-	inline void StringCopy(char (&dest)[N], const char* source)
-	{
-		if (!source) {
-			dest[0] = '\0';
-			return;
-		}
-		strncpy_s(dest, N, source, _TRUNCATE);
-	}
-
-	template <size_t N>
-	inline void StringCopy(char (&dest)[N], const std::string& source)
-	{
-		strncpy_s(dest, N, source.c_str(), _TRUNCATE);
-	}
-
 	/// @brief Delta save/load INI values.
 	namespace INI
 	{
@@ -1715,6 +1782,7 @@ namespace FUCK
 			strncpy_s(dest, N, val, _TRUNCATE);
 		}
 	}
+#endif  // FUCK_API_ENABLE_SIMPLEINI
 
 	/// @brief RAII Wrapper for listening to Skyrim UI Menu events.
 	class MenuEventListener
@@ -1755,6 +1823,56 @@ namespace FUCK
 		static void Dispatch(const char* menuName, bool opening, void* userdata)
 		{
 			static_cast<MenuEventListener*>(userdata)->_callback(menuName, opening);
+		}
+		Callback _callback;
+	};
+
+	/// @brief RAII Wrapper for listening to FUCK Window Open/Close events from any plugin.
+	class WindowEventListener
+	{
+	public:
+		using Callback = std::function<void(const char* pluginName, const char* windowId, bool opening)>;
+
+		WindowEventListener() = default;
+		explicit WindowEventListener(Callback a_cb) :
+			_callback(std::move(a_cb))
+		{
+			if (auto i = GetInterface())
+				i->AddWindowListener(this, &WindowEventListener::Dispatch);
+		}
+		~WindowEventListener()
+		{
+			if (_callback)
+				if (auto i = GetInterface())
+					i->RemoveWindowListener(this);
+		}
+
+		WindowEventListener(const WindowEventListener&)            = delete;
+		WindowEventListener& operator=(const WindowEventListener&) = delete;
+		WindowEventListener& operator=(WindowEventListener&& other) noexcept
+		{
+			if (this != &other) {
+				if (_callback)
+					if (auto i = GetInterface())
+						i->RemoveWindowListener(this);
+
+				_callback = std::move(other._callback);
+
+				if (_callback) {
+					if (auto i = GetInterface()) {
+						i->RemoveWindowListener(&other);
+						i->AddWindowListener(this, &WindowEventListener::Dispatch);
+					}
+					other._callback = nullptr;
+				}
+			}
+			return *this;
+		}
+
+	private:
+		static void Dispatch(const char* pluginName, const char* windowId, bool opening, void* userdata)
+		{
+			static_cast<WindowEventListener*>(userdata)->_callback(pluginName, windowId, opening);
 		}
 		Callback _callback;
 	};
@@ -1994,51 +2112,47 @@ namespace FUCK
 
 	inline void SeparatorVertical()
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->SeparatorVertical)
+		if (auto i = GetInterface())
 			i->SeparatorVertical();
 	}
 
 	inline void PushItemWidth(float item_width)
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->PushItemWidth)
+		if (auto i = GetInterface())
 			i->PushItemWidth(item_width);
 	}
 
 	inline void PopItemWidth()
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->PopItemWidth)
+		if (auto i = GetInterface())
 			i->PopItemWidth();
 	}
 
 	inline bool BeginTooltip()
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->BeginTooltip)
-			return i->BeginTooltip();
-		return false;
+		return GetInterface() ? GetInterface()->BeginTooltip() : false;
 	}
 
 	inline void EndTooltip()
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->EndTooltip)
+		if (auto i = GetInterface())
 			i->EndTooltip();
 	}
 
 	inline void SetScrollHereY(float center_y_ratio = 0.5f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->SetScrollHereY)
+		if (auto i = GetInterface())
 			i->SetScrollHereY(center_y_ratio);
 	}
 
 	inline bool InputTextMultiline(const char* label, char* buf, size_t buf_size, const ImVec2& size = ImVec2(0, 0), int flags = 0)
 	{
-		if (auto i = GetInterface(); i && i->version >= 2 && i->InputTextMultiline)
-			return i->InputTextMultiline(label, buf, buf_size, size, flags);
-		return false;
+		return GetInterface() ? GetInterface()->InputTextMultiline(label, buf, buf_size, size, flags) : false;
 	}
 
 	inline bool InputTextMultiline(const char* label, std::string* str, const ImVec2& size = ImVec2(0, 0), int flags = 0)
 	{
-		if (!str || !GetInterface() || GetInterface()->version < 2)
+		if (!str || !GetInterface())
 			return false;
 
 		char buf[4096];
@@ -2055,141 +2169,196 @@ namespace FUCK
 
 	inline void SetHotkeyEnabled(bool enabled)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->SetHotkeyEnabled)
+		if (auto i = GetInterface())
 			i->SetHotkeyEnabled(enabled);
 	}
 
 	inline void SetWindowFocus()
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->SetWindowFocus)
+		if (auto i = GetInterface())
 			i->SetWindowFocus();
 	}
 
 	inline void CloseCurrentPopup()
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->CloseCurrentPopup)
+		if (auto i = GetInterface())
 			i->CloseCurrentPopup();
 	}
 
 	inline void OpenPopup(const char* str_id, PopupFlags flags = PopupFlags::kNone)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->OpenPopup)
+		if (auto i = GetInterface())
 			i->OpenPopup(str_id, static_cast<int>(flags));
 	}
 
 	/// @param flags Currently ignored. Reserved for future updates.
 	inline bool BeginPopup(const char* str_id, WindowFlags flags = WindowFlags::kNone)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->BeginPopup)
-			return i->BeginPopup(str_id, static_cast<int>(flags));
-		return false;
+		return GetInterface() ? GetInterface()->BeginPopup(str_id, static_cast<int>(flags)) : false;
 	}
 
 	/// @param flags Currently ignored. Reserved for future updates.
 	inline bool BeginPopupModal(const char* name, bool* p_open = nullptr, WindowFlags flags = WindowFlags::kNone)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->BeginPopupModal)
-			return i->BeginPopupModal(name, p_open, static_cast<int>(flags));
-		return false;
+		return GetInterface() ? GetInterface()->BeginPopupModal(name, p_open, static_cast<int>(flags)) : false;
 	}
 
 	inline bool IsWindowAppearing()
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->IsWindowAppearing)
-			return i->IsWindowAppearing();
-		return false;
+		return GetInterface() ? GetInterface()->IsWindowAppearing() : false;
 	}
 
 	inline void PushTextWrapPos(float wrap_local_pos_x = 0.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->PushTextWrapPos)
+		if (auto i = GetInterface())
 			i->PushTextWrapPos(wrap_local_pos_x);
 	}
 
 	inline void PopTextWrapPos()
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->PopTextWrapPos)
+		if (auto i = GetInterface())
 			i->PopTextWrapPos();
 	}
 
 	inline void SetNavCursorVisible(bool visible)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->SetNavCursorVisible)
+		if (auto i = GetInterface())
 			i->SetNavCursorVisible(visible);
 	}
 
 	inline void DrawCircle(const ImVec2& center, float radius, const ImVec4& color, int num_segments = 0, float thickness = 1.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawCircle)
+		if (auto i = GetInterface())
 			i->DrawCircle(center, radius, color, num_segments, thickness);
 	}
 
 	inline void DrawCircleFilled(const ImVec2& center, float radius, const ImVec4& color, int num_segments = 0)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawCircleFilled)
+		if (auto i = GetInterface())
 			i->DrawCircleFilled(center, radius, color, num_segments);
 	}
 
 	inline void DrawScreenCircle(const ImVec2& center, float radius, ImU32 color, int num_segments = 0, float thickness = 1.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawScreenCircle)
+		if (auto i = GetInterface())
 			i->DrawScreenCircle(center, radius, color, num_segments, thickness);
 	}
 
 	inline void DrawScreenCircleFilled(const ImVec2& center, float radius, ImU32 color, int num_segments = 0)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawScreenCircleFilled)
+		if (auto i = GetInterface())
 			i->DrawScreenCircleFilled(center, radius, color, num_segments);
 	}
 
 	inline void DrawQuad(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, const ImVec4& color, float thickness = 1.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawQuad)
+		if (auto i = GetInterface())
 			i->DrawQuad(p1, p2, p3, p4, color, thickness);
 	}
 
 	inline void DrawQuadFilled(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, const ImVec4& color)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawQuadFilled)
+		if (auto i = GetInterface())
 			i->DrawQuadFilled(p1, p2, p3, p4, color);
 	}
 
 	inline void DrawScreenQuad(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 color, float thickness = 1.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawScreenQuad)
+		if (auto i = GetInterface())
 			i->DrawScreenQuad(p1, p2, p3, p4, color, thickness);
 	}
 
 	inline void DrawScreenQuadFilled(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 color)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawScreenQuadFilled)
+		if (auto i = GetInterface())
 			i->DrawScreenQuadFilled(p1, p2, p3, p4, color);
 	}
 
 	inline void DrawTriangle(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec4& color, float thickness = 1.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawTriangle)
+		if (auto i = GetInterface())
 			i->DrawTriangle(p1, p2, p3, color, thickness);
 	}
 
 	inline void DrawTriangleFilled(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec4& color)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawTriangleFilled)
+		if (auto i = GetInterface())
 			i->DrawTriangleFilled(p1, p2, p3, color);
 	}
 
 	inline void DrawScreenTriangle(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 color, float thickness = 1.0f)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawScreenTriangle)
+		if (auto i = GetInterface())
 			i->DrawScreenTriangle(p1, p2, p3, color, thickness);
 	}
 
 	inline void DrawScreenTriangleFilled(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 color)
 	{
-		if (auto i = GetInterface(); i && i->version >= 3 && i->DrawScreenTriangleFilled)
+		if (auto i = GetInterface())
 			i->DrawScreenTriangleFilled(p1, p2, p3, color);
 	}
-}  // namespace FUCK
+
+	// --------------------------------------------------
+	// Version 4
+	// --------------------------------------------------
+
+	inline bool WorldToScreenLoc(const float worldPos[3], ImVec2& screenLocOut)
+	{
+		return GetInterface() ? GetInterface()->WorldToScreenLoc(worldPos, &screenLocOut.x, &screenLocOut.y) : false;
+	}
+
+	/// @brief Converts a 3D world coordinate to 2D screen coordinates.
+	/// Returns false if the coordinate is behind the camera.
+	template <typename NiPoint3Like>
+		requires requires(const NiPoint3Like& a_p) { a_p.x; a_p.y; a_p.z; }
+	inline bool WorldToScreenLoc(const NiPoint3Like& worldLoc, ImVec2& screenLocOut)
+	{
+		float pos[3] = { worldLoc.x, worldLoc.y, worldLoc.z };
+		return WorldToScreenLoc(pos, screenLocOut);
+	}
+
+	inline void TableSetupScrollFreeze(int cols, int rows)
+	{
+		if (auto i = GetInterface())
+			i->TableSetupScrollFreeze(cols, rows);
+	}
+	inline void TableSetColumnIndex(int column_n)
+	{
+		if (auto i = GetInterface())
+			i->TableSetColumnIndex(column_n);
+	}
+	inline int TableGetColumnIndex() { return GetInterface() ? GetInterface()->TableGetColumnIndex() : 0; }
+	inline int TableGetRowIndex() { return GetInterface() ? GetInterface()->TableGetRowIndex() : 0; }
+	inline int TableGetColumnCount() { return GetInterface() ? GetInterface()->TableGetColumnCount() : 0; }
+
+	inline float GetScrollX() { return GetInterface() ? GetInterface()->GetScrollX() : 0.0f; }
+	inline float GetScrollY() { return GetInterface() ? GetInterface()->GetScrollY() : 0.0f; }
+	inline float GetScrollMaxX() { return GetInterface() ? GetInterface()->GetScrollMaxX() : 0.0f; }
+	inline float GetScrollMaxY() { return GetInterface() ? GetInterface()->GetScrollMaxY() : 0.0f; }
+	inline void  SetScrollX(float scroll_x)
+	{
+		if (auto i = GetInterface())
+			i->SetScrollX(scroll_x);
+	}
+	inline void SetScrollY(float scroll_y)
+	{
+		if (auto i = GetInterface())
+			i->SetScrollY(scroll_y);
+	}
+
+	inline bool SliderAngle(const char* label, float* v_rad, float v_degrees_min = -360.0f, float v_degrees_max = +360.0f, const char* format = "%.0f deg")
+	{
+		return GetInterface() ? GetInterface()->SliderAngle(label, v_rad, v_degrees_min, v_degrees_max, format) : false;
+	}
+	inline bool VSliderFloat(const char* label, const ImVec2& size, float* v, float v_min, float v_max, const char* format = "%.3f")
+	{
+		return GetInterface() ? GetInterface()->VSliderFloat(label, size, v, v_min, v_max, format) : false;
+	}
+	inline bool VSliderButton(const char* label, const ImVec2& slider_size, float* v, float v_min, float v_max, const char* format = "%.3f", bool draw_top_button = false, bool draw_bottom_button = true, bool* out_top_pressed = nullptr, bool* out_bottom_pressed = nullptr)
+	{
+		return GetInterface() ? GetInterface()->VSliderButton(label, slider_size, v, v_min, v_max, format, draw_top_button, draw_bottom_button, out_top_pressed, out_bottom_pressed) : false;
+	}
+} 
 
 // ==================================================
 // [ SECTION 5 ] GLOBAL LITERALS

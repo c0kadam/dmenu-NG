@@ -50,9 +50,11 @@ must be installed separately by users who want to use this compatibility path.
 
 dMenu NG vendors the unmodified public FLICK API header at
 `src/include/lib/FUCK_API.h`, copied from
-[Fuzzlesz/FUCK](https://github.com/Fuzzlesz/FUCK) API version 3. It is covered
-by the MIT License, Copyright (c) 2023/2025 powerofthree/fuzzles; the preserved
-license text is in `LICENSES/FLICK-MIT.txt`.
+[Fuzzlesz/FUCK](https://github.com/Fuzzlesz/FUCK) at commit
+`353ae087c6d73124e49d3947b62e231beb18ee68` (API version 4). The pinned
+upstream README describes GPL-3.0-or-later with the Modding Exception and
+GPL-3.0 Linking Exception. The upstream `LICENSE` and `EXCEPTIONS.md` are
+preserved in `LICENSES/FLICK-GPL-3.0.txt` and `LICENSES/FLICK-EXCEPTIONS.md`.
 
 The header performs runtime discovery of `FUCK.dll`. FLICK itself is not
 bundled with dMenu NG and is not linked into `dmenu.dll`.

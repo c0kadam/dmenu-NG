@@ -3,3 +3,4 @@
 
 # Preserve the exact upstream bytes of the vendored public API header.
 src/include/lib/SKSEMenuFramework.h -text whitespace=cr-at-eol
+src/include/lib/FUCK_API.h -text whitespace=-blank-at-eol
