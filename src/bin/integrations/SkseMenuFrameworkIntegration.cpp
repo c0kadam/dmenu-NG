@@ -73,15 +73,48 @@ namespace
 	constexpr float kKeymapTableWidth = 680.0f;
 	constexpr float kLabelWeight = 0.46f;
 	constexpr float kControlWeight = 0.54f;
-	constexpr float kSubsectionIndent = 16.0f;
-	constexpr unsigned int kSettingsIcon = 0xf013;  // Font Awesome cog
-	constexpr unsigned int kSlidersIcon = 0xf1de;   // Font Awesome sliders
+	constexpr float kSubsectionIndent = 14.0f;
+	constexpr ImGuiMCP::ImVec4 kSteel{ 0.12f, 0.20f, 0.28f, 0.96f };
+	constexpr ImGuiMCP::ImVec4 kSteelHover{ 0.17f, 0.29f, 0.40f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kSteelActive{ 0.20f, 0.35f, 0.47f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kControlSurface{ 0.09f, 0.16f, 0.22f, 0.94f };
+	constexpr ImGuiMCP::ImVec4 kControlHover{ 0.15f, 0.25f, 0.34f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kBlue{ 0.29f, 0.61f, 0.89f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kBlueActive{ 0.44f, 0.72f, 0.95f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kGold{ 0.85f, 0.66f, 0.36f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kBorder{ 0.23f, 0.33f, 0.42f, 0.85f };
+
+	// Stable Font Awesome Free glyphs used by the framework's solid font.
+	constexpr unsigned int kPageIcon = 0xf009;      // th-large
+	constexpr unsigned int kSettingsIcon = 0xf013;  // cog
+	constexpr unsigned int kSlidersIcon = 0xf1de;   // sliders
+	constexpr unsigned int kToggleIcon = 0xf205;    // toggle-on
+	constexpr unsigned int kListIcon = 0xf03a;      // list
+	constexpr unsigned int kTextIcon = 0xf031;      // font
+	constexpr unsigned int kColorIcon = 0xf1fc;     // paint-brush
+	constexpr unsigned int kKeyboardIcon = 0xf11c;  // keyboard
+	constexpr unsigned int kActionIcon = 0xf0e7;    // bolt
+	constexpr unsigned int kGroupsIcon = 0xf0e8;    // sitemap
+
+	enum class VisualKind : std::size_t
+	{
+		Checkbox,
+		Slider,
+		Dropdown,
+		Textbox,
+		Color,
+		Keymap,
+		Button,
+		Text,
+		Count
+	};
 
 	struct GroupStats
 	{
 		std::size_t directLeaves = 0;
+		std::size_t directGroups = 0;
 		std::size_t descendantLeaves = 0;
-		std::size_t sliders = 0;
+		std::array<std::size_t, static_cast<std::size_t>(VisualKind::Count)> kinds{};
 		std::string_view soleLeafLabel;
 	};
 
@@ -90,6 +123,7 @@ namespace
 		bool hasHeading = false;
 		bool indented = false;
 		bool major = false;
+		bool subsection = false;
 	};
 
 	struct PresentationState
@@ -100,11 +134,12 @@ namespace
 		std::string_view pageDescription;
 		std::size_t headingDepth = 0;
 		std::size_t majorCount = 0;
-		bool subsectionIndented = false;
 	};
 
 	bool g_hasThemeStyles = false;
+	bool g_hasStyleVars = false;
 	bool g_hasFontAwesome = false;
+	bool g_hasIconOverlay = false;
 
 	struct RowLayout
 	{
@@ -143,11 +178,98 @@ namespace
 		};
 	}
 
-	ImGuiMCP::ImVec4 HeaderColor(ImGuiMCP::ImGuiCol a_color, ImGuiMCP::ImVec4 a_accent, float a_amount)
+	std::string UpperAscii(std::string_view a_text)
 	{
-		auto color = Blend(ThemeColor(a_color), a_accent, a_amount);
-		color.w = (std::max)(color.w, 0.28f);
-		return color;
+		std::string result(a_text);
+		for (auto& character : result) {
+			if (character >= 'a' && character <= 'z') {
+				character = static_cast<char>(character - 'a' + 'A');
+			}
+		}
+		return result;
+	}
+
+	unsigned int IconForKind(VisualKind a_kind)
+	{
+		switch (a_kind) {
+		case VisualKind::Checkbox: return kToggleIcon;
+		case VisualKind::Slider: return kSlidersIcon;
+		case VisualKind::Dropdown: return kListIcon;
+		case VisualKind::Textbox: return kTextIcon;
+		case VisualKind::Color: return kColorIcon;
+		case VisualKind::Keymap: return kKeyboardIcon;
+		case VisualKind::Button: return kActionIcon;
+		default: return kSettingsIcon;
+		}
+	}
+
+	unsigned int IconForGroup(const GroupStats& a_stats)
+	{
+		constexpr std::array priority{
+			VisualKind::Keymap, VisualKind::Color, VisualKind::Slider,
+			VisualKind::Button, VisualKind::Textbox, VisualKind::Dropdown, VisualKind::Checkbox
+		};
+		std::size_t best = 0;
+		unsigned int icon = a_stats.directGroups > 1 ? kGroupsIcon : kSettingsIcon;
+		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
+		for (const auto kind : priority) {
+			const auto count = a_stats.kinds[static_cast<std::size_t>(kind)];
+			if (count > best) {
+				best = count;
+				icon = IconForKind(kind);
+			}
+		}
+		return best >= 2 && (best * 2 >= interactiveLeaves || (best >= 3 && best * 3 >= interactiveLeaves)) ?
+			icon : (a_stats.directGroups > 1 ? kGroupsIcon : kSettingsIcon);
+	}
+
+	void DrawIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
+	{
+		if (!g_hasFontAwesome) {
+			return;
+		}
+		const auto glyph = FontAwesome::UnicodeToUtf8(a_codepoint);
+		FontAwesome::PushSolid();
+		ImGuiMCP::TextColored(a_color, "%s", glyph.c_str());
+		FontAwesome::Pop();
+	}
+
+	void DrawHeaderIcon(unsigned int a_codepoint)
+	{
+		if (!g_hasFontAwesome || !g_hasIconOverlay) {
+			return;
+		}
+		const auto afterHeader = ImGuiMCP::GetCursorScreenPos();
+		const auto header = ImGuiMCP::GetItemRectMin();
+		ImGuiMCP::SetCursorScreenPos({ header.x + ImGuiMCP::GetFrameHeight() * 0.94f, header.y + 4.0f });
+		DrawIcon(a_codepoint, kGold);
+		ImGuiMCP::SetCursorScreenPos(afterHeader);
+	}
+
+	int PushControlStyle(VisualKind a_kind)
+	{
+		if (!g_hasThemeStyles) {
+			return 0;
+		}
+		if (a_kind == VisualKind::Button || a_kind == VisualKind::Keymap) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, kSteel);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonHovered, kSteelHover);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ButtonActive, kSteelActive);
+			return 3;
+		}
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBg, kControlSurface);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgHovered, kControlHover);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_FrameBgActive, kSteelHover);
+		if (a_kind == VisualKind::Slider) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrab, kBlue);
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_SliderGrabActive, kBlueActive);
+			return 5;
+		}
+		if (a_kind == VisualKind::Checkbox) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_CheckMark, kBlueActive);
+			return 4;
+		}
+		return 3;
 	}
 
 	void SecondaryText(const char* a_text)
@@ -156,7 +278,7 @@ namespace
 			return;
 		}
 		if (g_hasThemeStyles) {
-			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.76f));
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, WithAlpha(ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.72f));
 		}
 		ImGuiMCP::TextWrapped("%s", a_text);
 		if (g_hasThemeStyles) {
@@ -201,7 +323,8 @@ namespace
 		return false;
 	}
 
-	RowLayout BeginRow(const void* a_identity, const char* a_label, float a_tableWidth = kStackedRowWidth)
+	RowLayout BeginRow(const void* a_identity, const char* a_label, VisualKind a_kind,
+		float a_tableWidth = kStackedRowWidth)
 	{
 		ImGuiMCP::PushID(a_identity);
 		RowLayout row{};
@@ -216,6 +339,10 @@ namespace
 			ImGuiMCP::TableSetColumnIndex(0);
 		}
 		ImGuiMCP::AlignTextToFramePadding();
+		if (g_hasFontAwesome) {
+			DrawIcon(IconForKind(a_kind), WithAlpha(kGold, 0.58f));
+			ImGuiMCP::SameLine();
+		}
 		ImGuiMCP::TextWrapped("%s", TextOrEmpty(a_label));
 		row.labelHelp = ItemRequestsHelp();
 		if (row.table) {
@@ -254,57 +381,64 @@ namespace
 		const auto found = a_state.groupStats.find(a_group.identity);
 		const GroupStats stats = found == a_state.groupStats.end() ? GroupStats{} : found->second;
 		const bool repeatsPage = a_state.headingDepth == 0 && RepeatsPageName(TextOrEmpty(a_group.label), a_state.pageName);
-		const bool singleLeafWrapper = stats.descendantLeaves == 1;
+		const bool singleLeafWrapper = stats.descendantLeaves == 1 && stats.directGroups == 0 &&
+			(a_state.headingDepth != 0 || stats.soleLeafLabel == TextOrEmpty(a_group.label));
 		GroupFrame frame{};
 		bool showChildren = true;
 		if (!repeatsPage && stats.descendantLeaves != 0) {
 			ImGuiMCP::Spacing();
 			if (singleLeafWrapper) {
-				if (stats.soleLeafLabel != TextOrEmpty(a_group.label)) {
-					SecondaryText(TextOrEmpty(a_group.label));
-				}
+				SecondaryText(a_group.description);
 			} else if (a_state.headingDepth == 0) {
-				const auto label = (g_hasFontAwesome ?
-					FontAwesome::UnicodeToUtf8(stats.sliders >= 2 && stats.sliders * 2 >= stats.descendantLeaves ? kSlidersIcon : kSettingsIcon) + "  " + TextOrEmpty(a_group.label) :
-					std::string(TextOrEmpty(a_group.label))) + "###section";
+				const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
+					UpperAscii(TextOrEmpty(a_group.label)) + "###section";
 				if (g_hasThemeStyles) {
-					const auto accent = ThemeColor(ImGuiMCP::ImGuiCol_CheckMark);
-					const auto normal = ThemeColor(ImGuiMCP::ImGuiCol_Text);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, Blend(normal, accent, 0.64f));
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, HeaderColor(ImGuiMCP::ImGuiCol_Header, accent, 0.16f));
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, HeaderColor(ImGuiMCP::ImGuiCol_HeaderHovered, accent, 0.20f));
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, HeaderColor(ImGuiMCP::ImGuiCol_HeaderActive, accent, 0.26f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, ThemeColor(ImGuiMCP::ImGuiCol_Text));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, kSteel);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, kSteelHover);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, kSteelActive);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Border, kBorder);
+				}
+				if (g_hasStyleVars) {
+					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 8.0f, 5.0f });
+					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FrameBorderSize, 1.0f);
 				}
 				ImGuiMCP::SetNextItemOpen(a_state.majorCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
-				if (g_hasFontAwesome) {
-					FontAwesome::PushSolid();
-				}
 				showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
-				if (g_hasFontAwesome) {
-					FontAwesome::Pop();
+				DrawHeaderIcon(IconForGroup(stats));
+				if (g_hasStyleVars) {
+					ImGuiMCP::PopStyleVar(2);
 				}
 				if (g_hasThemeStyles) {
-					ImGuiMCP::PopStyleColor(4);
+					ImGuiMCP::PopStyleColor(5);
 				}
 				frame.hasHeading = true;
 				frame.major = true;
-			} else {
-				if (!a_state.subsectionIndented) {
+				if (showChildren) {
 					ImGuiMCP::Indent(kSubsectionIndent);
 					frame.indented = true;
-					a_state.subsectionIndented = true;
 				}
+			} else {
+				ImGuiMCP::Indent(kSubsectionIndent);
+				frame.indented = true;
+				const auto titleColor = a_state.headingDepth == 1 || !g_hasThemeStyles ? kGold :
+					Blend(kGold, ThemeColor(ImGuiMCP::ImGuiCol_Text), 0.28f);
+				if (g_hasFontAwesome) {
+					DrawIcon(IconForGroup(stats), titleColor);
+					ImGuiMCP::SameLine();
+				}
+				ImGuiMCP::TextColored(titleColor, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
 				if (g_hasThemeStyles) {
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text,
-						Blend(ThemeColor(ImGuiMCP::ImGuiCol_Text), ThemeColor(ImGuiMCP::ImGuiCol_CheckMark), 0.34f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, kBorder);
 				}
-				ImGuiMCP::TextUnformatted(TextOrEmpty(a_group.label));
+				ImGuiMCP::Separator();
 				if (g_hasThemeStyles) {
 					ImGuiMCP::PopStyleColor();
 				}
 				frame.hasHeading = true;
+				frame.subsection = true;
 			}
-			if (showChildren && a_group.description && a_group.description[0] != '\0') {
+			if (frame.hasHeading && showChildren && a_group.description && a_group.description[0] != '\0') {
 				SecondaryText(a_group.description);
 			}
 			if (frame.hasHeading) {
@@ -324,9 +458,8 @@ namespace
 		}
 		if (frame.indented) {
 			ImGuiMCP::Unindent(kSubsectionIndent);
-			a_state.subsectionIndented = false;
 		}
-		if (frame.major) {
+		if (frame.major || frame.subsection) {
 			ImGuiMCP::Spacing();
 		}
 		ImGuiMCP::PopID();
@@ -337,13 +470,15 @@ namespace
 	{
 		std::unordered_map<const void*, GroupStats> stats;
 		std::vector<const void*> groupPath;
-		const auto countLeaf = [&](const char* label) {
+		const auto countLeaf = [&](const char* label, VisualKind kind) {
 			if (!groupPath.empty()) {
 				auto& group = stats[groupPath.back()];
 				++group.directLeaves;
 				group.soleLeafLabel = group.directLeaves == 1 ? TextOrEmpty(label) : std::string_view{};
 				for (const auto* identity : groupPath) {
-					++stats[identity].descendantLeaves;
+					auto& ancestor = stats[identity];
+					++ancestor.descendantLeaves;
+					++ancestor.kinds[static_cast<std::size_t>(kind)];
 				}
 			}
 		};
@@ -353,24 +488,24 @@ namespace
 				group.description && group.description[0] != '\0') {
 				a_pageDescription = group.description;
 			}
+			if (!groupPath.empty()) {
+				++stats[groupPath.back()].directGroups;
+			}
 			groupPath.push_back(group.identity);
 			return true;
 		};
 		callbacks.endGroup = [&](const ModSettings::GroupVisit&) { groupPath.pop_back(); };
-		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> { countLeaf(visit.label); return std::nullopt; };
+		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> { countLeaf(visit.label, VisualKind::Checkbox); return std::nullopt; };
 		callbacks.slider = [&](const ModSettings::SliderVisit& visit) {
-			countLeaf(visit.label);
-			for (const auto* identity : groupPath) {
-				++stats[identity].sliders;
-			}
+			countLeaf(visit.label, VisualKind::Slider);
 			return ModSettings::SliderUpdate{};
 		};
-		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> { countLeaf(visit.label); return std::nullopt; };
-		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) { countLeaf(visit.label); return ModSettings::TextboxUpdate{}; };
-		callbacks.text = [&](const ModSettings::TextVisit& visit) { countLeaf(visit.label); };
-		callbacks.color = [&](const ModSettings::ColorVisit& visit) { countLeaf(visit.label); return ModSettings::ColorUpdate{}; };
-		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) { countLeaf(visit.label); return ModSettings::KeymapAction::None; };
-		callbacks.button = [&](const ModSettings::ButtonVisit& visit) { countLeaf(visit.label); return false; };
+		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> { countLeaf(visit.label, VisualKind::Dropdown); return std::nullopt; };
+		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) { countLeaf(visit.label, VisualKind::Textbox); return ModSettings::TextboxUpdate{}; };
+		callbacks.text = [&](const ModSettings::TextVisit& visit) { countLeaf(visit.label, VisualKind::Text); };
+		callbacks.color = [&](const ModSettings::ColorVisit& visit) { countLeaf(visit.label, VisualKind::Color); return ModSettings::ColorUpdate{}; };
+		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) { countLeaf(visit.label, VisualKind::Keymap); return ModSettings::KeymapAction::None; };
+		callbacks.button = [&](const ModSettings::ButtonVisit& visit) { countLeaf(visit.label, VisualKind::Button); return false; };
 		ModSettings::VisitPageSettings(a_pageIdentity, callbacks);
 		return stats;
 	}
@@ -378,11 +513,15 @@ namespace
 	std::optional<bool> DrawCheckbox(const ModSettings::CheckboxVisit& a_checkbox)
 	{
 		bool value = a_checkbox.value;
-		const RowLayout row = BeginRow(a_checkbox.identity, a_checkbox.label);
+		const RowLayout row = BeginRow(a_checkbox.identity, a_checkbox.label, VisualKind::Checkbox);
 		if (!a_checkbox.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
+		const int styleColors = PushControlStyle(VisualKind::Checkbox);
 		const bool changed = ImGuiMCP::Checkbox("##value", &value);
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
+		}
 		const bool controlHelp = ItemRequestsHelp();
 		if (!a_checkbox.enabled) {
 			ImGuiMCP::EndDisabled();
@@ -399,12 +538,16 @@ namespace
 		char displayValue[64] = {};
 		std::snprintf(displayValue, sizeof(displayValue), "%g", a_slider.value);
 
-		const RowLayout row = BeginRow(a_slider.identity, a_slider.label);
+		const RowLayout row = BeginRow(a_slider.identity, a_slider.label, VisualKind::Slider);
 		if (!a_slider.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
 		SetControlWidth(row);
+		const int styleColors = PushControlStyle(VisualKind::Slider);
 		ImGuiMCP::SliderInt("##value", &stepIndex, 0, stepCount, displayValue);
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
+		}
 		const bool editCompleted = ImGuiMCP::IsItemDeactivatedAfterEdit();
 		const bool controlHelp = ItemRequestsHelp();
 		if (!a_slider.enabled) {
@@ -426,11 +569,12 @@ namespace
 			previewValue = a_dropdown.options[static_cast<std::size_t>(selectedIndex)].c_str();
 		}
 
-		const RowLayout row = BeginRow(a_dropdown.identity, a_dropdown.label);
+		const RowLayout row = BeginRow(a_dropdown.identity, a_dropdown.label, VisualKind::Dropdown);
 		if (!a_dropdown.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
 		SetControlWidth(row);
+		const int styleColors = PushControlStyle(VisualKind::Dropdown);
 		const bool comboOpen = ImGuiMCP::BeginCombo("##value", previewValue);
 		const bool controlHelp = ItemRequestsHelp();
 		if (comboOpen) {
@@ -442,6 +586,9 @@ namespace
 				ImGuiMCP::PopID();
 			}
 			ImGuiMCP::EndCombo();
+		}
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
 		}
 		if (!a_dropdown.enabled) {
 			ImGuiMCP::EndDisabled();
@@ -478,11 +625,12 @@ namespace
 		buffer.characters.assign(a_textbox.value.begin(), a_textbox.value.end());
 		buffer.characters.push_back('\0');
 
-		const RowLayout row = BeginRow(a_textbox.identity, a_textbox.label);
+		const RowLayout row = BeginRow(a_textbox.identity, a_textbox.label, VisualKind::Textbox);
 		if (!a_textbox.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
 		SetControlWidth(row);
+		const int styleColors = PushControlStyle(VisualKind::Textbox);
 		const bool changed = ImGuiMCP::InputText(
 			"##value",
 			buffer.characters.data(),
@@ -490,6 +638,9 @@ namespace
 			ImGuiMCP::ImGuiInputTextFlags_CallbackResize,
 			TextboxResizeCallback,
 			&buffer);
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
+		}
 		const bool editCompleted = ImGuiMCP::IsItemDeactivatedAfterEdit();
 		const bool controlHelp = ItemRequestsHelp();
 		if (!a_textbox.enabled) {
@@ -542,11 +693,12 @@ namespace
 			a_color.value.alpha
 		};
 
-		const RowLayout row = BeginRow(a_color.identity, a_color.label);
+		const RowLayout row = BeginRow(a_color.identity, a_color.label, VisualKind::Color);
 		if (!a_color.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
 		ImGuiMCP::SetNextItemWidth((std::min)(ImGuiMCP::GetFrameHeight() * 2.5f, ImGuiMCP::GetContentRegionAvail().x));
+		const int styleColors = PushControlStyle(VisualKind::Color);
 		const bool changed = ImGuiMCP::ColorEdit4(
 			"##value",
 			value,
@@ -554,6 +706,9 @@ namespace
 			ImGuiMCP::ImGuiColorEditFlags_AlphaBar |
 			ImGuiMCP::ImGuiColorEditFlags_NoInputs |
 			ImGuiMCP::ImGuiColorEditFlags_NoLabel);
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
+		}
 		const bool editCompleted = ImGuiMCP::IsItemDeactivatedAfterEdit();
 		const bool controlHelp = ItemRequestsHelp();
 		if (!a_color.enabled) {
@@ -570,10 +725,11 @@ namespace
 	ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap)
 	{
 		ModSettings::KeymapAction action = ModSettings::KeymapAction::None;
-		const RowLayout row = BeginRow(a_keymap.identity, a_keymap.label, kKeymapTableWidth);
+		const RowLayout row = BeginRow(a_keymap.identity, a_keymap.label, VisualKind::Keymap, kKeymapTableWidth);
 		if (!a_keymap.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
+		const int styleColors = PushControlStyle(VisualKind::Keymap);
 		bool controlHelp = false;
 		if (a_keymap.capturing) {
 			SecondaryText("Press a key...");
@@ -601,6 +757,9 @@ namespace
 				controlHelp |= ItemRequestsHelp();
 			}
 		}
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
+		}
 		if (!a_keymap.enabled) {
 			ImGuiMCP::EndDisabled();
 		}
@@ -617,7 +776,19 @@ namespace
 			ImGuiMCP::BeginDisabled();
 		}
 		const float width = (std::min)(280.0f, ImGuiMCP::GetContentRegionAvail().x);
-		const bool activated = ImGuiMCP::Button(TextOrEmpty(a_button.label), ImGuiMCP::ImVec2{ width, 0.0f });
+		const int styleColors = PushControlStyle(VisualKind::Button);
+		const auto label = g_hasFontAwesome ? FontAwesome::UnicodeToUtf8(kActionIcon) + "  " + TextOrEmpty(a_button.label) :
+			std::string(TextOrEmpty(a_button.label));
+		if (g_hasFontAwesome) {
+			FontAwesome::PushSolid();
+		}
+		const bool activated = ImGuiMCP::Button(label.c_str(), ImGuiMCP::ImVec2{ width, 0.0f });
+		if (g_hasFontAwesome) {
+			FontAwesome::Pop();
+		}
+		if (styleColors) {
+			ImGuiMCP::PopStyleColor(styleColors);
+		}
 		const bool controlHelp = ItemRequestsHelp();
 		if (!a_button.enabled) {
 			ImGuiMCP::EndDisabled();
@@ -634,18 +805,20 @@ namespace
 		presentation.groupStats = CollectGroupStats(a_pageIdentity, a_pageName, presentation.pageDescription);
 		presentation.pageName = a_pageName;
 		if (g_hasFontAwesome) {
-			FontAwesome::PushSolid();
-			if (g_hasThemeStyles) {
-				ImGuiMCP::TextColored(ThemeColor(ImGuiMCP::ImGuiCol_CheckMark), "%s", FontAwesome::UnicodeToUtf8(kSettingsIcon).c_str());
-			} else {
-				ImGuiMCP::TextUnformatted(FontAwesome::UnicodeToUtf8(kSettingsIcon).c_str());
-			}
-			FontAwesome::Pop();
+			DrawIcon(kPageIcon, kGold);
 			ImGuiMCP::SameLine();
 		}
-		ImGuiMCP::TextUnformatted(a_pageName.data(), a_pageName.data() + a_pageName.size());
+		const auto title = UpperAscii(a_pageName);
+		ImGuiMCP::TextUnformatted(title.c_str());
 		SecondaryText(presentation.pageDescription.data());
+		ImGuiMCP::Spacing();
+		if (g_hasThemeStyles) {
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, kBorder);
+		}
 		ImGuiMCP::Separator();
+		if (g_hasThemeStyles) {
+			ImGuiMCP::PopStyleColor();
+		}
 		ImGuiMCP::Spacing();
 
 		ModSettings::PageSettingsCallbacks callbacks{};
@@ -706,7 +879,13 @@ namespace SkseMenuFrameworkIntegration
 		g_hasThemeStyles = ::GetProcAddress(module, "igGetStyleColorVec4") &&
 			::GetProcAddress(module, "igPushStyleColor_Vec4") &&
 			::GetProcAddress(module, "igPopStyleColor");
+		g_hasStyleVars = ::GetProcAddress(module, "igPushStyleVar_Float") &&
+			::GetProcAddress(module, "igPushStyleVar_Vec2") &&
+			::GetProcAddress(module, "igPopStyleVar");
 		g_hasFontAwesome = ::GetProcAddress(module, "PushSolid") && ::GetProcAddress(module, "Pop");
+		g_hasIconOverlay = ::GetProcAddress(module, "igGetCursorScreenPos") &&
+			::GetProcAddress(module, "igSetCursorScreenPos") &&
+			::GetProcAddress(module, "igGetItemRectMin");
 
 		std::array<ModSettings::PageVisit, kMaximumRegisteredPages> pages = {};
 		std::size_t pageCount = 0;
