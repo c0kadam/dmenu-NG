@@ -65,8 +65,7 @@ namespace
 		"igPushID_Ptr",
 		"igPushID_Int",
 		"igPopID",
-		"igCollapsingHeader_TreeNodeFlags",
-		"igSetNextItemOpen"
+		"igCollapsingHeader_TreeNodeFlags"
 	};
 
 	constexpr std::size_t kMaximumRegisteredPages = 128;
@@ -168,8 +167,6 @@ namespace
 		std::string_view pageName;
 		std::string_view pageDescription;
 		std::size_t headingDepth = 0;
-		std::size_t majorCount = 0;
-		std::size_t subsectionCount = 0;
 		std::size_t interactiveDepth = 0;
 	};
 
@@ -300,46 +297,6 @@ namespace
 			icon : (a_stats.directGroups > 1 ? kGroupsIcon : kSettingsIcon);
 	}
 
-	bool OnlyMeaningfulChild(const PresentationState& a_state)
-	{
-		if (a_state.groupStack.empty()) {
-			return false;
-		}
-		const auto parent = a_state.groupStats.find(a_state.groupStack.back().identity);
-		if (parent == a_state.groupStats.end() || parent->second.directInteractiveLeaves != 0) {
-			return false;
-		}
-		std::size_t meaningfulChildren = 0;
-		for (const auto* child : parent->second.childGroups) {
-			const auto found = a_state.groupStats.find(child);
-			if (found != a_state.groupStats.end() &&
-				found->second.descendantLeaves > found->second.kinds[static_cast<std::size_t>(VisualKind::Text)]) {
-				++meaningfulChildren;
-			}
-		}
-		return meaningfulChildren == 1;
-	}
-
-	bool OnlyMeaningfulVirtualChild(const PresentationState& a_state, const GroupStats& a_run)
-	{
-		if (a_state.groupStack.empty()) {
-			return false;
-		}
-		const auto parent = a_state.groupStats.find(a_state.groupStack.back().identity);
-		if (parent == a_state.groupStats.end() ||
-			parent->second.directInteractiveLeaves != a_run.directInteractiveLeaves) {
-			return false;
-		}
-		for (const auto* child : parent->second.childGroups) {
-			const auto found = a_state.groupStats.find(child);
-			if (found != a_state.groupStats.end() &&
-				found->second.descendantLeaves > found->second.kinds[static_cast<std::size_t>(VisualKind::Text)]) {
-				return false;
-			}
-		}
-		return true;
-	}
-
 	void DrawIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
 	{
 		if (!g_hasFontAwesome) {
@@ -364,7 +321,7 @@ namespace
 		ImGuiMCP::SetCursorScreenPos(afterHeader);
 	}
 
-	bool DrawMicroDisclosure(const char* a_label, const GroupStats& a_stats, bool a_defaultOpen)
+	bool DrawMicroDisclosure(const char* a_label, const GroupStats& a_stats)
 	{
 		const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
 			UpperAscii(TextOrEmpty(a_label)) + "###micro";
@@ -375,7 +332,6 @@ namespace
 		if (g_hasStyleVars) {
 			ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 2.0f, 1.0f });
 		}
-		ImGuiMCP::SetNextItemOpen(a_defaultOpen, ImGuiMCP::ImGuiCond_FirstUseEver);
 		const bool open = g_hasCompactTree ?
 			ImGuiMCP::TreeNodeEx(label.c_str(),
 				ImGuiMCP::ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiMCP::ImGuiTreeNodeFlags_SpanAvailWidth) :
@@ -567,8 +523,6 @@ namespace
 					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 8.0f, 5.0f });
 					ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FrameBorderSize, 1.0f);
 				}
-				a_state.subsectionCount = 0;
-				ImGuiMCP::SetNextItemOpen(a_state.majorCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
 				showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
 				DrawHeaderIcon(IconForGroup(stats), Palette().structuralAccent);
 				if (g_hasStyleVars) {
@@ -597,7 +551,6 @@ namespace
 					if (g_hasStyleVars) {
 						ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 4.0f, 3.0f });
 					}
-					ImGuiMCP::SetNextItemOpen(a_state.subsectionCount++ == 0, ImGuiMCP::ImGuiCond_FirstUseEver);
 					showChildren = ImGuiMCP::CollapsingHeader(label.c_str());
 					DrawHeaderIcon(IconForGroup(stats), Palette().subsectionAccent);
 					if (g_hasStyleVars) {
@@ -631,7 +584,7 @@ namespace
 				frame.indentWidth = kSubsectionContentIndent;
 				const bool collapsible = a_state.headingDepth == 2 && g_hasThemeStyles && ShouldCollapseMicro(stats);
 				if (collapsible) {
-					showChildren = DrawMicroDisclosure(a_group.label, stats, OnlyMeaningfulChild(a_state));
+					showChildren = DrawMicroDisclosure(a_group.label, stats);
 				} else {
 					if (g_hasFontAwesome) {
 						DrawIcon(IconForGroup(stats), WithAlpha(Palette().microAccent, 0.85f));
@@ -886,8 +839,7 @@ namespace
 			return;
 		}
 		ImGuiMCP::PushID(a_text.identity);
-		const bool open = DrawMicroDisclosure(a_text.label, found->second,
-			OnlyMeaningfulVirtualChild(a_state, found->second));
+		const bool open = DrawMicroDisclosure(a_text.label, found->second);
 		ImGuiMCP::PopID();
 		auto& frame = a_state.groupStack.back();
 		frame.virtualActive = true;

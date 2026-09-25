@@ -51,7 +51,6 @@ namespace SettingsPresentation
 		std::size_t directInteractiveLeaves = 0;
 		std::size_t directGroups = 0;
 		std::size_t descendantLeaves = 0;
-		std::vector<const void*> childGroups;
 		std::array<std::size_t, static_cast<std::size_t>(VisualKind::Count)> kinds{};
 		std::array<std::size_t, static_cast<std::size_t>(SemanticRole::Count)> semantics{};
 		std::array<std::size_t, static_cast<std::size_t>(InputDeviceClass::Count)> mappedKeymapDevices{};
@@ -221,7 +220,6 @@ namespace SettingsPresentation
 			}
 			if (!groupPath.empty()) {
 				++stats[groupPath.back()].directGroups;
-				stats[groupPath.back()].childGroups.push_back(group.identity);
 				activeMarkers.back() = nullptr;
 			}
 			groupPath.push_back(group.identity);

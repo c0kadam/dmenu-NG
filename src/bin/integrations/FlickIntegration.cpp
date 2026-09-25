@@ -251,8 +251,6 @@ namespace
 		std::string_view description;
 		float baseFontSize = 0.0f;
 		std::size_t depth = 0;
-		std::size_t majorCount = 0;
-		std::size_t subsectionCount = 0;
 		std::size_t interactiveDepth = 0;
 	};
 
@@ -282,7 +280,7 @@ namespace
 	}
 
 	bool Disclosure(const char* a_label, float a_baseFontSize, float a_scale, ImVec4 a_text,
-		ImVec4 a_hover, unsigned int a_icon, bool a_defaultOpen)
+		ImVec4 a_hover, unsigned int a_icon)
 	{
 		std::string label = a_icon ? Glyph(a_icon) + "  " : std::string{};
 		label += UpperAscii(TextOrEmpty(a_label));
@@ -291,8 +289,7 @@ namespace
 		FUCK::PushStyleColor(ImGuiCol_Header, a_scale >= 1.0f ? kVanilla.major : ImVec4{ 0, 0, 0, 0 });
 		FUCK::PushStyleColor(ImGuiCol_HeaderHovered, a_hover);
 		FUCK::PushStyleColor(ImGuiCol_HeaderActive, kVanilla.majorActive);
-		const int flags = a_defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0;
-		const bool open = FUCK::CollapsingHeader(label.c_str(), flags);
+		const bool open = FUCK::CollapsingHeader(label.c_str());
 		FUCK::PopStyleColor(4);
 		FUCK::PopFont();
 		return open;
@@ -317,7 +314,7 @@ namespace
 			} else if (a_state.depth == 0) {
 				FUCK::Spacing();
 				open = Disclosure(a_group.label, a_state.baseFontSize, 1.0f, kVanilla.goldBright,
-					kVanilla.majorHover, IconForGroup(stats, true), a_state.majorCount++ == 0);
+					kVanilla.majorHover, IconForGroup(stats, true));
 				FUCK::Separator();
 				frame.heading = frame.major = true;
 				if (open) frame.indent = kMajorIndent;
@@ -325,7 +322,7 @@ namespace
 				const bool collapsible = a_state.interactiveDepth == 0 && SettingsPresentation::ShouldCollapseSubsection(stats);
 				if (collapsible) {
 					open = Disclosure(a_group.label, a_state.baseFontSize, 0.94f, kVanilla.gold,
-						kVanilla.controlHover, IconForGroup(stats), a_state.subsectionCount++ == 0);
+						kVanilla.controlHover, IconForGroup(stats));
 					frame.interactiveSubsection = true;
 					++a_state.interactiveDepth;
 				} else {
@@ -339,7 +336,7 @@ namespace
 				const unsigned int icon = IconForGroup(stats);
 				if (collapsible) {
 					open = Disclosure(a_group.label, a_state.baseFontSize, 0.87f, kVanilla.secondary,
-						kVanilla.controlHover, icon, false);
+						kVanilla.controlHover, icon);
 				} else {
 					Heading(a_group.label, a_state.baseFontSize, 0.87f, kVanilla.secondary, icon);
 				}
@@ -404,7 +401,7 @@ namespace
 		}
 		FUCK::PushID(a_text.identity);
 		const bool open = Disclosure(a_text.label, a_state.baseFontSize, 0.87f, kVanilla.secondary,
-			kVanilla.controlHover, IconForGroup(found->second), false);
+			kVanilla.controlHover, IconForGroup(found->second));
 		FUCK::PopID();
 		auto& frame = a_state.stack.back();
 		frame.virtualActive = true;
