@@ -4,4 +4,5 @@ namespace FlickIntegration
 {
 	// Called once after all SKSE plugins have loaded.
 	void InitializeAfterPluginsLoaded();
+	bool ShouldPassCancelMouseLeft();
 }

@@ -2246,6 +2246,15 @@ bool ModSettings::IsExternalKeymapCaptureActive()
 	return g_keyMapCaptureCommitsImmediately && keyMapListening != nullptr;
 }
 
+bool ModSettings::CancelExternalKeymapCapture(const void* a_keymapIdentity)
+{
+	if (!a_keymapIdentity || !IsExternalKeymapCaptureActive() || keyMapListening != a_keymapIdentity) {
+		return false;
+	}
+	ClearKeyMapCapture();
+	return true;
+}
+
 void ModSettings::ToggleHintsVisibility()
 {
 	if (g_hintFocusedEntryLastFrame == nullptr) {

@@ -1,4 +1,5 @@
 #include "InputListener.h"
+#include "integrations/FlickIntegration.h"
 
 #include <WinUser.h>
 #include <Windows.h>
@@ -562,7 +563,8 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 				WheelerCooperativeOpening::IsCurrentEventMatched(reinterpret_cast<std::uintptr_t>(event));
 
 			const bool wasCapturingExternalKeymap = ModSettings::IsExternalKeymapCaptureActive();
-			if (button->IsDown()) {
+			if (button->IsDown() &&
+				!(device == RE::INPUT_DEVICE::kMouse && scan_code == 0 && FlickIntegration::ShouldPassCancelMouseLeft())) {
 				ModSettings::submitInput(input);
 			}
 

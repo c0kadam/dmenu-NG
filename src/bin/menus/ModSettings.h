@@ -521,6 +521,7 @@ public:
 
 	static bool IsKeymapCapturing();
 	static bool IsExternalKeymapCaptureActive();
+	static bool CancelExternalKeymapCapture(const void* a_keymapIdentity);
 
 	// Visits parsed checkbox and slider settings in page and source order.
 	// Returned pages contain an accepted edit that has completed and can be
