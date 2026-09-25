@@ -161,6 +161,7 @@ install(
 	DIRECTORY "${ROOT_DIR}/Data/SKSE/Plugins/dMenu"
 	DESTINATION "SKSE/Plugins"
 	COMPONENT "main"
+	PATTERN "dmenu.ini" EXCLUDE
 )
 
 install(

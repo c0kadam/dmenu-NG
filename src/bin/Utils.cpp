@@ -215,12 +215,6 @@ void settingsLoader::save(uint32_t& settingRef, const char* key)
 	_savedSettings++;
 }
 
-void settingsLoader::save(const std::string& settingRef, const char* key)
-{
-	_ini.SetValue(_section, key, settingRef.c_str());
-	_savedSettings++;
-}
-
 /*Load an integer value if present.*/
 
 void settingsLoader::load(int& settingRef, const char* key)

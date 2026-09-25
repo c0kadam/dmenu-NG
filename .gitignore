@@ -17,6 +17,9 @@ CTestTestfile.cmake
 *.sln
 *.ninja
 
+# User-owned runtime configuration
+/Data/SKSE/Plugins/dMenu/dmenu.ini
+
 # Local CMake / IDE state
 CMakeUserPresets.json
 *.user

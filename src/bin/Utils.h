@@ -81,7 +81,6 @@ public:
 	void save(bool& settingRef, const char* key);
 	void save(float& settingRef, const char* key);
 	void save(uint32_t& settingRef, const char* key);
-	void save(const std::string& settingRef, const char* key);
 
 	void flush();
 
