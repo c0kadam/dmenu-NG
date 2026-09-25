@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <unordered_set>
 #include "imgui.h"
 inline size_t strl(const char* a_str)
@@ -75,10 +76,12 @@ public:
 	void load(float& settingRef, const char* key);
 	/*Load an unsigned int value if present.*/
 	void load(uint32_t& settingRef, const char* key);
+	void load(std::string& settingRef, const char* key);
 
 	void save(bool& settingRef, const char* key);
 	void save(float& settingRef, const char* key);
 	void save(uint32_t& settingRef, const char* key);
+	void save(const std::string& settingRef, const char* key);
 
 	void flush();
 

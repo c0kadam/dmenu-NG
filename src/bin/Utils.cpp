@@ -185,6 +185,14 @@ void settingsLoader::load(uint32_t& settingRef, const char* key)
 	}
 }
 
+void settingsLoader::load(std::string& settingRef, const char* key)
+{
+	if (const char* value = _ini.GetValue(_section, key)) {
+		settingRef = value;
+		_loadedSettings++;
+	}
+}
+
 void settingsLoader::save(bool& settingRef, const char* key)
 {
 	if (settingRef) {
@@ -204,6 +212,12 @@ void settingsLoader::save(float& settingRef, const char* key)
 void settingsLoader::save(uint32_t& settingRef, const char* key)
 {
 	_ini.SetValue(_section, key, std::to_string(settingRef).data());
+	_savedSettings++;
+}
+
+void settingsLoader::save(const std::string& settingRef, const char* key)
+{
+	_ini.SetValue(_section, key, settingRef.c_str());
 	_savedSettings++;
 }
 

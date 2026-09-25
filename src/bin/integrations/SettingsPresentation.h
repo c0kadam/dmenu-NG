@@ -9,9 +9,12 @@
 #include <vector>
 
 #include "../menus/ModSettings.h"
+#include "../InputListener.h"
 
 namespace SettingsPresentation
 {
+	using InputDeviceClass = InputListener::InputDeviceClass;
+
 	enum class VisualKind : std::size_t
 	{
 		Checkbox,
@@ -51,6 +54,7 @@ namespace SettingsPresentation
 		std::vector<const void*> childGroups;
 		std::array<std::size_t, static_cast<std::size_t>(VisualKind::Count)> kinds{};
 		std::array<std::size_t, static_cast<std::size_t>(SemanticRole::Count)> semantics{};
+		std::array<std::size_t, static_cast<std::size_t>(InputDeviceClass::Count)> mappedKeymapDevices{};
 		std::string_view soleLeafLabel;
 	};
 
@@ -101,6 +105,37 @@ namespace SettingsPresentation
 		return SemanticRole::None;
 	}
 
+	inline InputDeviceClass InputContext(const GroupStats& a_stats)
+	{
+		const auto keyboard = a_stats.mappedKeymapDevices[static_cast<std::size_t>(InputDeviceClass::Keyboard)];
+		const auto mouse = a_stats.mappedKeymapDevices[static_cast<std::size_t>(InputDeviceClass::Mouse)];
+		const auto gamepad = a_stats.mappedKeymapDevices[static_cast<std::size_t>(InputDeviceClass::Gamepad)];
+		if (gamepad && !keyboard && !mouse) return InputDeviceClass::Gamepad;
+		if ((keyboard || mouse) && !gamepad) return keyboard ? InputDeviceClass::Keyboard : InputDeviceClass::Mouse;
+		return InputDeviceClass::Unknown;
+	}
+
+	inline InputDeviceClass InputHintForId(std::string_view a_id)
+	{
+		const auto id = UpperAscii(a_id);
+		const auto has = [&](std::string_view a_term) { return id.find(a_term) != std::string::npos; };
+		const bool gamepad = has("GAMEPAD") || has("CONTROLLER") || has("DPAD");
+		const bool mouse = has("MOUSE");
+		const bool keyboard = has("KEYBOARD");
+		if (static_cast<int>(gamepad) + static_cast<int>(mouse) + static_cast<int>(keyboard) != 1) {
+			return InputDeviceClass::Unknown;
+		}
+		return gamepad ? InputDeviceClass::Gamepad : mouse ? InputDeviceClass::Mouse : InputDeviceClass::Keyboard;
+	}
+
+	inline InputDeviceClass ResolveKeymapDevice(const ModSettings::KeymapVisit& a_keymap, InputDeviceClass a_parentContext)
+	{
+		const auto bound = InputListener::ClassifyInputCode(a_keymap.bindingCode);
+		if (bound != InputDeviceClass::Unknown) return bound;
+		if (a_parentContext != InputDeviceClass::Unknown) return a_parentContext;
+		return InputHintForId(a_keymap.semanticId);
+	}
+
 	inline bool ShouldCollapseSubsection(const GroupStats& a_stats)
 	{
 		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
@@ -144,7 +179,8 @@ namespace SettingsPresentation
 		std::unordered_map<const void*, GroupStats> stats;
 		std::vector<const void*> groupPath;
 		std::vector<const void*> activeMarkers;
-		const auto countLeaf = [&](const char* label, VisualKind kind, SemanticRole role = SemanticRole::None) {
+		const auto countLeaf = [&](const char* label, VisualKind kind, SemanticRole role = SemanticRole::None,
+			InputDeviceClass device = InputDeviceClass::Unknown) {
 			if (!groupPath.empty()) {
 				auto& group = stats[groupPath.back()];
 				++group.directLeaves;
@@ -159,6 +195,9 @@ namespace SettingsPresentation
 					if (role != SemanticRole::None) {
 						++ancestor.semantics[static_cast<std::size_t>(role)];
 					}
+					if (device != InputDeviceClass::Unknown) {
+						++ancestor.mappedKeymapDevices[static_cast<std::size_t>(device)];
+					}
 				}
 				if (kind != VisualKind::Text && activeMarkers.back()) {
 					auto& run = a_virtualStats[activeMarkers.back()];
@@ -167,6 +206,9 @@ namespace SettingsPresentation
 					++run.kinds[static_cast<std::size_t>(kind)];
 					if (role != SemanticRole::None) {
 						++run.semantics[static_cast<std::size_t>(role)];
+					}
+					if (device != InputDeviceClass::Unknown) {
+						++run.mappedKeymapDevices[static_cast<std::size_t>(device)];
 					}
 				}
 			}
@@ -209,7 +251,8 @@ namespace SettingsPresentation
 		};
 		callbacks.color = [&](const ModSettings::ColorVisit& visit) { countLeaf(visit.label, VisualKind::Color); return ModSettings::ColorUpdate{}; };
 		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
-			countLeaf(visit.label, VisualKind::Keymap, SemanticForId(visit.semanticId));
+			countLeaf(visit.label, VisualKind::Keymap, SemanticForId(visit.semanticId),
+				InputListener::ClassifyInputCode(visit.bindingCode));
 			return ModSettings::KeymapAction::None;
 		};
 		callbacks.button = [&](const ModSettings::ButtonVisit& visit) { countLeaf(visit.label, VisualKind::Button); return false; };

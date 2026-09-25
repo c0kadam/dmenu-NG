@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include "Translator.h"
 class Settings
 {
@@ -12,6 +13,7 @@ public:
 	static inline bool lockWindowSize = false;
 
 	static inline float fontScale = 1.f;
+	static inline std::string frontend_group_name = "dMenu";
 	static inline bool sksemf_jet_black = false;
 	static void SetSkseMenuFrameworkJetBlack(bool a_enabled);
 

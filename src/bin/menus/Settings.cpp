@@ -117,6 +117,7 @@ namespace ini
 		loader.save(Settings::key_toggle_dmenu_mkb, "key_toggle_dmenu");
 		loader.save(Settings::key_toggle_modifier_mkb, "key_toggle_modifier");
 		loader.save(Settings::fontScale, "fontScale");
+		loader.save(Settings::frontend_group_name, "frontend_group_name");
 		loader.save(Settings::sksemf_jet_black, "sksemf_jet_black");
 		loader.setActiveSection("IME");
 		loader.save(Settings::enable_ime_support, "EnableIMESupport");
@@ -161,6 +162,11 @@ namespace ini
 		loader.load(Settings::lockWindowSize, "lockWindowSize");
 		loader.load(Settings::lockWindowPos, "lockWindowPos");
 		loader.load(Settings::fontScale, "fontScale");
+		Settings::frontend_group_name = "dMenu";
+		loader.load(Settings::frontend_group_name, "frontend_group_name");
+		if (Settings::frontend_group_name.find_first_not_of(" \t\r\n\v\f") == std::string::npos) {
+			Settings::frontend_group_name = "dMenu";
+		}
 		loader.load(Settings::sksemf_jet_black, "sksemf_jet_black");
 
 		uint32_t legacyToggle = kUnsetCaptureValue;

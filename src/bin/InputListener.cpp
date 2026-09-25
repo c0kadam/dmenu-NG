@@ -326,7 +326,8 @@ static enum : std::uint32_t
 	kInvalid = static_cast<std::uint32_t>(-1),
 	kKeyboardOffset = 0,
 	kMouseOffset = 256,
-	kGamepadOffset = 266
+	kGamepadOffset = 266,
+	kGamepadEnd = 282
 };
 			
 static inline std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key)
@@ -406,6 +407,14 @@ std::optional<std::uint32_t> InputListener::ToInputCode(const RE::ButtonEvent& a
 	default:
 		return std::nullopt;
 	}
+}
+
+InputListener::InputDeviceClass InputListener::ClassifyInputCode(std::uint32_t a_inputCode)
+{
+	if (a_inputCode == 0 || a_inputCode >= kGamepadEnd) return InputDeviceClass::Unknown;
+	if (a_inputCode < kMouseOffset) return InputDeviceClass::Keyboard;
+	if (a_inputCode < kGamepadOffset) return InputDeviceClass::Mouse;
+	return InputDeviceClass::Gamepad;
 }
 
 static ImGuiKey MapGamepadKeyToImGui(RE::BSWin32GamepadDevice::Key a_key)

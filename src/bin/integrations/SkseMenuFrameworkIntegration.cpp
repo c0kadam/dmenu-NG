@@ -121,6 +121,8 @@ namespace
 	constexpr unsigned int kTextIcon = 0xf031;      // font
 	constexpr unsigned int kColorIcon = 0xf1fc;     // paint-brush
 	constexpr unsigned int kKeyboardIcon = 0xf11c;  // keyboard
+	constexpr unsigned int kMouseIcon = 0xf8cc;     // computer-mouse
+	constexpr unsigned int kKeyIcon = 0xf084;       // key
 	constexpr unsigned int kActionIcon = 0xf0e7;    // bolt
 	constexpr unsigned int kGroupsIcon = 0xf0e8;    // sitemap
 	constexpr unsigned int kGamepadIcon = 0xf11b;   // gamepad
@@ -170,6 +172,27 @@ namespace
 		std::size_t subsectionCount = 0;
 		std::size_t interactiveDepth = 0;
 	};
+
+	SettingsPresentation::InputDeviceClass ParentInputContext(const PresentationState& a_state)
+	{
+		for (auto frame = a_state.groupStack.rbegin(); frame != a_state.groupStack.rend(); ++frame) {
+			const auto group = a_state.groupStats.find(frame->identity);
+			if (group == a_state.groupStats.end()) continue;
+			const auto device = SettingsPresentation::InputContext(group->second);
+			if (device != SettingsPresentation::InputDeviceClass::Unknown) return device;
+		}
+		return SettingsPresentation::InputDeviceClass::Unknown;
+	}
+
+	unsigned int IconForKeymap(SettingsPresentation::InputDeviceClass a_device)
+	{
+		switch (a_device) {
+		case SettingsPresentation::InputDeviceClass::Keyboard: return kKeyboardIcon;
+		case SettingsPresentation::InputDeviceClass::Mouse: return kMouseIcon;
+		case SettingsPresentation::InputDeviceClass::Gamepad: return kGamepadIcon;
+		default: return kKeyIcon;
+		}
+	}
 
 	bool g_hasThemeStyles = false;
 	bool g_hasStyleVars = false;
@@ -912,11 +935,12 @@ namespace
 		};
 	}
 
-	ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap, const void* a_pageIdentity)
+	ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap, const void* a_pageIdentity,
+		SettingsPresentation::InputDeviceClass a_parentContext)
 	{
 		ModSettings::KeymapAction action = ModSettings::KeymapAction::None;
 		const RowLayout row = BeginRow(a_keymap.identity, a_keymap.label, VisualKind::Keymap,
-			IconForSemantic(SemanticForId(a_keymap.semanticId)), kKeymapTableWidth);
+			IconForKeymap(SettingsPresentation::ResolveKeymapDevice(a_keymap, a_parentContext)), kKeymapTableWidth);
 		if (!a_keymap.enabled) {
 			ImGuiMCP::BeginDisabled();
 		}
@@ -1073,7 +1097,8 @@ namespace
 			return VirtualContentVisible(presentation) ? DrawColor(visit) : ModSettings::ColorUpdate{};
 		};
 		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
-			return VirtualContentVisible(presentation) ? DrawKeymap(visit, a_pageIdentity) : ModSettings::KeymapAction::None;
+			return VirtualContentVisible(presentation) ? DrawKeymap(visit, a_pageIdentity,
+				ParentInputContext(presentation)) : ModSettings::KeymapAction::None;
 		};
 		callbacks.button = [&](const ModSettings::ButtonVisit& visit) {
 			return VirtualContentVisible(presentation) && DrawButton(visit);
@@ -1210,7 +1235,7 @@ namespace SkseMenuFrameworkIntegration
 		logger::info("SKSE Menu Framework input bridge {}",
 			g_hasInputBridge ? "registered" : "unavailable");
 
-		SKSEMenuFramework::SetSection("dMenu");
+		SKSEMenuFramework::SetSection(Settings::frontend_group_name);
 		for (std::size_t index = 0; index < pageCount; ++index) {
 			g_pageIdentities[index] = pages[index].identity;
 			g_pageNames[index] = pages[index].name;

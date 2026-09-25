@@ -12,6 +12,7 @@
 #include "../InputListener.h"
 #include "../Utils.h"
 #include "../menus/ModSettings.h"
+#include "../menus/Settings.h"
 
 // API 4 uses ImFont::LegacySize; dMenu's pinned ImGui names it FontSize.
 // Win32 min/max macros also collide with API 4's std::max helpers.
@@ -100,15 +101,14 @@ namespace
 		}
 	}
 
-	unsigned int IconForKeymap(std::string_view a_semanticId)
+	unsigned int IconForKeymap(SettingsPresentation::InputDeviceClass a_device)
 	{
-		const auto id = UpperAscii(a_semanticId);
-		const auto has = [&](std::string_view a_term) { return id.find(a_term) != std::string::npos; };
-		const bool gamepad = has("GAMEPAD") || has("CONTROLLER") || has("DPAD");
-		const bool mouse = has("MOUSE");
-		const bool keyboard = has("KEYBOARD");
-		if (static_cast<int>(gamepad) + static_cast<int>(mouse) + static_cast<int>(keyboard) != 1) return kKeyIcon;
-		return gamepad ? kGamepadIcon : mouse ? kMouseIcon : kKeyboardIcon;
+		switch (a_device) {
+		case SettingsPresentation::InputDeviceClass::Keyboard: return kKeyboardIcon;
+		case SettingsPresentation::InputDeviceClass::Mouse: return kMouseIcon;
+		case SettingsPresentation::InputDeviceClass::Gamepad: return kGamepadIcon;
+		default: return kKeyIcon;
+		}
 	}
 
 	unsigned int IconForGroup(const GroupStats& a_stats, bool a_fallback = false)
@@ -255,6 +255,17 @@ namespace
 		std::size_t subsectionCount = 0;
 		std::size_t interactiveDepth = 0;
 	};
+
+	SettingsPresentation::InputDeviceClass ParentInputContext(const RenderState& a_state)
+	{
+		for (auto frame = a_state.stack.rbegin(); frame != a_state.stack.rend(); ++frame) {
+			const auto group = a_state.groups.find(frame->identity);
+			if (group == a_state.groups.end()) continue;
+			const auto device = SettingsPresentation::InputContext(group->second);
+			if (device != SettingsPresentation::InputDeviceClass::Unknown) return device;
+		}
+		return SettingsPresentation::InputDeviceClass::Unknown;
+	}
 
 	void CloseVirtual(RenderState& a_state)
 	{
@@ -407,10 +418,10 @@ namespace
 	class DMenuPageTool final : public FUCK::ITool
 	{
 	public:
-		DMenuPageTool(const void* a_page, std::string a_sourceName, std::string a_name) :
-			page_(a_page), sourceName_(std::move(a_sourceName)), name_(std::move(a_name)) {}
+		DMenuPageTool(const void* a_page, std::string a_sourceName, std::string a_name, std::string a_groupName) :
+			page_(a_page), sourceName_(std::move(a_sourceName)), name_(std::move(a_name)), groupName_(std::move(a_groupName)) {}
 		const char* Name() const override { return name_.c_str(); }
-		const char* Group() const override { return "dMenu"; }
+		const char* Group() const override { return groupName_.c_str(); }
 		void OnOpen() override { open_ = true; g_activeTool = this; }
 		void OnClose() override;
 		bool OnAsyncInput(const void* a_event) override;
@@ -423,10 +434,12 @@ namespace
 		}
 
 	private:
-		ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap);
+		ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap,
+			SettingsPresentation::InputDeviceClass a_parentContext);
 		const void* page_;
 		std::string sourceName_;
 		std::string name_;
+		std::string groupName_;
 		const void* captureKeymap_ = nullptr;
 		const void* cancelKeymap_ = nullptr;
 		bool open_ = false;
@@ -484,9 +497,11 @@ namespace
 		return consumed;
 	}
 
-	ModSettings::KeymapAction DMenuPageTool::DrawKeymap(const ModSettings::KeymapVisit& a_keymap)
+	ModSettings::KeymapAction DMenuPageTool::DrawKeymap(const ModSettings::KeymapVisit& a_keymap,
+		SettingsPresentation::InputDeviceClass a_parentContext)
 	{
-		const Row row = BeginRow(a_keymap.identity, a_keymap.label, IconForKeymap(a_keymap.semanticId));
+		const Row row = BeginRow(a_keymap.identity, a_keymap.label,
+			IconForKeymap(SettingsPresentation::ResolveKeymapDevice(a_keymap, a_parentContext)));
 		if (!a_keymap.enabled) FUCK::BeginDisabled();
 		ModSettings::KeymapAction action = ModSettings::KeymapAction::None;
 		if (a_keymap.capturing) captureKeymap_ = a_keymap.identity;
@@ -638,7 +653,7 @@ namespace
 				finished };
 		};
 		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
-			return ContentVisible(state) ? DrawKeymap(visit) : ModSettings::KeymapAction::None;
+			return ContentVisible(state) ? DrawKeymap(visit, ParentInputContext(state)) : ModSettings::KeymapAction::None;
 		};
 		callbacks.button = [&](const ModSettings::ButtonVisit& visit) {
 			if (!ContentVisible(state)) return false;
@@ -683,6 +698,7 @@ namespace FlickIntegration
 		}
 
 		static std::vector<std::unique_ptr<DMenuPageTool>> tools;
+		const std::string groupName = Settings::frontend_group_name;
 		std::unordered_set<std::string> names;
 		ModSettings::ForEachLoadedPage([&](const ModSettings::PageVisit& page) {
 			std::string base(page.name);
@@ -692,7 +708,7 @@ namespace FlickIntegration
 				display = base + " (" + std::to_string(suffix) + ")";
 			}
 			names.insert(display);
-			auto tool = std::make_unique<DMenuPageTool>(page.identity, std::string(page.name), std::move(display));
+			auto tool = std::make_unique<DMenuPageTool>(page.identity, std::string(page.name), std::move(display), groupName);
 			FUCK::RegisterTool(tool.get());
 			tools.push_back(std::move(tool));
 		});

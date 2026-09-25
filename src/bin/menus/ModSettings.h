@@ -465,6 +465,7 @@ public:
 		const char* label;
 		const char* description;
 		const char* bindingLabel;
+		std::uint32_t bindingCode;
 		std::size_t groupDepth;
 		bool capturing;
 		bool mapped;

@@ -2758,6 +2758,7 @@ void ModSettings::for_each_setting(
 				keymap->name.get(),
 				keymap->desc.get(),
 				setting_keymap::keyid_to_str(keymap->value),
+				static_cast<std::uint32_t>(keymap->value),
 				groupDepth,
 				keyMapListening == keymap && g_keyMapCaptureCommitsImmediately,
 				keymap->value != 0,
