@@ -64,6 +64,7 @@ namespace
 	constexpr unsigned int kKeyboardIcon = 0xf11c;
 	constexpr unsigned int kGamepadIcon = 0xf11b;
 	constexpr unsigned int kMouseIcon = 0xf8cc;
+	constexpr unsigned int kKeyIcon = 0xf084;
 	constexpr unsigned int kColorIcon = 0xf53f;
 	constexpr unsigned int kTimingIcon = 0xf017;
 	constexpr unsigned int kSoundIcon = 0xf028;
@@ -97,6 +98,17 @@ namespace
 		case SemanticRole::Indicator: return kFilterIcon;
 		default: return 0;
 		}
+	}
+
+	unsigned int IconForKeymap(std::string_view a_semanticId)
+	{
+		const auto id = UpperAscii(a_semanticId);
+		const auto has = [&](std::string_view a_term) { return id.find(a_term) != std::string::npos; };
+		const bool gamepad = has("GAMEPAD") || has("CONTROLLER") || has("DPAD");
+		const bool mouse = has("MOUSE");
+		const bool keyboard = has("KEYBOARD");
+		if (static_cast<int>(gamepad) + static_cast<int>(mouse) + static_cast<int>(keyboard) != 1) return kKeyIcon;
+		return gamepad ? kGamepadIcon : mouse ? kMouseIcon : kKeyboardIcon;
 	}
 
 	unsigned int IconForGroup(const GroupStats& a_stats, bool a_fallback = false)
@@ -375,7 +387,7 @@ namespace
 			return;
 		}
 		CloseVirtual(a_state);
-		if (a_state.depth != 2 || !SettingsPresentation::ShouldCollapseVirtual(found->second)) {
+		if (a_state.depth < 1 || !SettingsPresentation::ShouldCollapseVirtual(found->second)) {
 			DrawText(a_text);
 			return;
 		}
@@ -474,33 +486,62 @@ namespace
 
 	ModSettings::KeymapAction DMenuPageTool::DrawKeymap(const ModSettings::KeymapVisit& a_keymap)
 	{
-		const Row row = BeginRow(a_keymap.identity, a_keymap.label, kKeyboardIcon);
+		const Row row = BeginRow(a_keymap.identity, a_keymap.label, IconForKeymap(a_keymap.semanticId));
 		if (!a_keymap.enabled) FUCK::BeginDisabled();
 		ModSettings::KeymapAction action = ModSettings::KeymapAction::None;
-		if (a_keymap.capturing) {
-			captureKeymap_ = a_keymap.identity;
-			SecondaryText("Press a key...");
-			FUCK::SameLine();
-			if (FUCK::Button("Cancel")) action = ModSettings::KeymapAction::CancelCapture;
-			cancelKeymap_ = a_keymap.identity;
-			cancelHovered_ = FUCK::IsItemHovered();
-			cancelRendered_ = true;
-			if (action == ModSettings::KeymapAction::CancelCapture) {
-				if (cancelMouseClick_) ModSettings::ObserveKeymapCaptureInput(kMouseLeftInput, false);
-				captureKeymap_ = cancelKeymap_ = nullptr;
-				cancelHovered_ = cancelMouseClick_ = false;
-			}
-		} else {
-			FUCK::TextUnformatted(TextOrEmpty(a_keymap.bindingLabel));
-			FUCK::SameLine();
-			if (FUCK::Button("Remap")) {
+		if (a_keymap.capturing) captureKeymap_ = a_keymap.identity;
+		const auto drawBinding = [&] {
+			const std::string label = a_keymap.capturing ? "Press a key..." :
+				a_keymap.mapped ? UpperAscii(TextOrEmpty(a_keymap.bindingLabel)) : TextOrEmpty(a_keymap.bindingLabel);
+			FUCK::PushStyleColor(ImGuiCol_Text, a_keymap.mapped || a_keymap.capturing ? kVanilla.goldBright : kVanilla.secondary);
+			FUCK::TextWrapped("%s", label.c_str());
+			FUCK::PopStyleColor();
+		};
+		const auto drawAction = [&] {
+			if (a_keymap.capturing) {
+				if (FUCK::Button("Cancel")) action = ModSettings::KeymapAction::CancelCapture;
+				cancelKeymap_ = a_keymap.identity;
+				cancelHovered_ = FUCK::IsItemHovered();
+				cancelRendered_ = true;
+			} else if (FUCK::Button("Remap")) {
 				captureKeymap_ = a_keymap.identity;
 				action = ModSettings::KeymapAction::BeginCapture;
 			}
-			if (a_keymap.mapped) {
-				FUCK::SameLine();
-				if (FUCK::Button("Clear")) action = ModSettings::KeymapAction::Unmap;
+		};
+		const auto drawClear = [&] {
+			if (!a_keymap.capturing && a_keymap.mapped && FUCK::Button("Clear")) {
+				action = ModSettings::KeymapAction::Unmap;
 			}
+		};
+		const float actionWidth = (std::max)(FUCK::CalcTextSize("Remap").x,
+			FUCK::CalcTextSize("Cancel").x) + FUCK::UIScale(20.0f);
+		const float clearWidth = FUCK::CalcTextSize("Clear").x + FUCK::UIScale(20.0f);
+		const float tableMinWidth = actionWidth + clearWidth + FUCK::UIScale(112.0f);
+		if (FUCK::GetContentRegionAvail().x >= tableMinWidth &&
+			FUCK::BeginTable("##keymap_controls", 3, FUCK::TableFlags::kNoSavedSettings | FUCK::TableFlags::kSizingStretchProp)) {
+			FUCK::TableSetupColumn("Binding", FUCK::TableColumnFlags::kWidthStretch, 1.0f);
+			FUCK::TableSetupColumn("Action", FUCK::TableColumnFlags::kWidthFixed, actionWidth);
+			FUCK::TableSetupColumn("Clear", FUCK::TableColumnFlags::kWidthFixed, clearWidth);
+			FUCK::TableNextRow(0, FUCK::GetFrameHeight());
+			FUCK::TableSetColumnIndex(0);
+			drawBinding();
+			FUCK::TableSetColumnIndex(1);
+			drawAction();
+			FUCK::TableSetColumnIndex(2);
+			drawClear();
+			FUCK::EndTable();
+		} else {
+			drawBinding();
+			drawAction();
+			if (!a_keymap.capturing && a_keymap.mapped) {
+				FUCK::SameLine();
+				drawClear();
+			}
+		}
+		if (action == ModSettings::KeymapAction::CancelCapture) {
+			if (cancelMouseClick_) ModSettings::ObserveKeymapCaptureInput(kMouseLeftInput, false);
+			captureKeymap_ = cancelKeymap_ = nullptr;
+			cancelHovered_ = cancelMouseClick_ = false;
 		}
 		if (!a_keymap.enabled) FUCK::EndDisabled();
 		EndRow(row, a_keymap.description);
@@ -585,7 +626,7 @@ namespace
 			float color[4]{ visit.value.red, visit.value.green, visit.value.blue, visit.value.alpha };
 			const Row row = BeginRow(visit.identity, visit.label, kColorIcon);
 			if (!visit.enabled) FUCK::BeginDisabled();
-			FUCK::SetNextItemWidth(FUCK::GetFrameHeight() * 3.0f);
+			FUCK::SetNextItemWidth(FUCK::GetFrameHeight() * 1.85f);
 			const bool changed = FUCK::ColorEdit4("##value", color,
 				ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_DisplayRGB |
 				ImGuiColorEditFlags_AlphaBar);
