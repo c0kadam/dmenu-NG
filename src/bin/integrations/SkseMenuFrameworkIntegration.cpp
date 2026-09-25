@@ -187,6 +187,17 @@ namespace
 	bool g_hasCompactTree = false;
 	bool g_hasInputBridge = false;
 	std::int64_t g_inputRegistrationId = -1;
+	struct CancelTargetState
+	{
+		const void* page = nullptr;
+		const void* keymap = nullptr;
+		bool hovered = false;
+		bool passingMouseClick = false;
+		bool renderedThisPage = false;
+		int renderedFrame = -1;
+	};
+	CancelTargetState g_cancelTarget;
+	bool g_hasFrameCount = false;
 	using FrameworkInputCallback = bool(__stdcall*)(RE::InputEvent*);
 	using RegisterInputEventFunction = std::int64_t (*)(FrameworkInputCallback);
 
@@ -1068,7 +1079,7 @@ namespace
 		};
 	}
 
-	ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap)
+	ModSettings::KeymapAction DrawKeymap(const ModSettings::KeymapVisit& a_keymap, const void* a_pageIdentity)
 	{
 		ModSettings::KeymapAction action = ModSettings::KeymapAction::None;
 		const RowLayout row = BeginRow(a_keymap.identity, a_keymap.label, VisualKind::Keymap,
@@ -1086,8 +1097,19 @@ namespace
 			if (ImGuiMCP::Button("Cancel")) {
 				action = ModSettings::KeymapAction::CancelCapture;
 			}
+			g_cancelTarget.page = a_pageIdentity;
+			g_cancelTarget.keymap = a_keymap.identity;
+			g_cancelTarget.hovered = ImGuiMCP::IsItemHovered();
+			g_cancelTarget.renderedThisPage = true;
+			g_cancelTarget.renderedFrame = g_hasFrameCount ? ImGuiMCP::GetFrameCount() : -1;
+			if (action == ModSettings::KeymapAction::CancelCapture) {
+				g_cancelTarget = {};
+			}
 			controlHelp = ItemRequestsHelp();
 		} else {
+			if (g_cancelTarget.keymap == a_keymap.identity) {
+				g_cancelTarget = {};
+			}
 			ImGuiMCP::TextUnformatted(TextOrEmpty(a_keymap.bindingLabel));
 			if (row.table) {
 				ImGuiMCP::SameLine();
@@ -1156,6 +1178,10 @@ namespace
 
 	void RenderPage(const void* a_pageIdentity, std::string_view a_pageName)
 	{
+		const bool ownsCancelTarget = g_cancelTarget.page == a_pageIdentity;
+		if (ownsCancelTarget) {
+			g_cancelTarget.renderedThisPage = false;
+		}
 		PresentationState presentation{};
 		presentation.groupStats = CollectGroupStats(a_pageIdentity, a_pageName, presentation.pageDescription,
 			presentation.virtualStats);
@@ -1197,7 +1223,7 @@ namespace
 			return VirtualContentVisible(presentation) ? DrawColor(visit) : ModSettings::ColorUpdate{};
 		};
 		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
-			return VirtualContentVisible(presentation) ? DrawKeymap(visit) : ModSettings::KeymapAction::None;
+			return VirtualContentVisible(presentation) ? DrawKeymap(visit, a_pageIdentity) : ModSettings::KeymapAction::None;
 		};
 		callbacks.button = [&](const ModSettings::ButtonVisit& visit) {
 			return VirtualContentVisible(presentation) && DrawButton(visit);
@@ -1205,6 +1231,9 @@ namespace
 
 		if (ModSettings::VisitPageSettings(a_pageIdentity, callbacks)) {
 			ModSettings::CommitIniDirtyPage(a_pageIdentity);
+		}
+		if (ownsCancelTarget && !g_cancelTarget.renderedThisPage) {
+			g_cancelTarget = {};
 		}
 	}
 
@@ -1233,13 +1262,30 @@ namespace
 			return false;
 		}
 		const bool capturing = ModSettings::IsExternalKeymapCaptureActive();
+		if (!capturing || g_cancelTarget.keymap != ModSettings::keyMapListening ||
+			(g_hasFrameCount && g_cancelTarget.renderedFrame >= 0 &&
+				ImGuiMCP::GetFrameCount() > g_cancelTarget.renderedFrame + 1)) {
+			g_cancelTarget = {};
+		}
+		const bool mouseLeft = button->GetDevice() == RE::INPUT_DEVICE::kMouse && button->GetIDCode() == 0;
 		if (button->IsDown()) {
 			ModSettings::ObserveKeymapCaptureInput(*inputCode, true);
+			if (capturing && mouseLeft && g_cancelTarget.hovered) {
+				g_cancelTarget.passingMouseClick = true;
+				return false;
+			}
 			if (capturing) {
 				ModSettings::submitInput(*inputCode);
+				if (!ModSettings::IsExternalKeymapCaptureActive()) {
+					g_cancelTarget = {};
+				}
 			}
 		} else if (!button->IsPressed()) {
 			ModSettings::ObserveKeymapCaptureInput(*inputCode, false);
+			if (capturing && mouseLeft && g_cancelTarget.passingMouseClick) {
+				g_cancelTarget.passingMouseClick = false;
+				return false;
+			}
 		}
 		return capturing;
 	}
@@ -1279,6 +1325,7 @@ namespace SkseMenuFrameworkIntegration
 			::GetProcAddress(module, "igSetCursorScreenPos") &&
 			::GetProcAddress(module, "igGetItemRectMin");
 		g_hasCompactTree = ::GetProcAddress(module, "igTreeNodeEx_Str") != nullptr;
+		g_hasFrameCount = ::GetProcAddress(module, "igGetFrameCount") != nullptr;
 
 		std::array<ModSettings::PageVisit, kMaximumRegisteredPages> pages = {};
 		std::size_t pageCount = 0;
