@@ -75,6 +75,7 @@ namespace
 	constexpr float kControlWeight = 0.54f;
 	constexpr float kSubsectionIndent = 10.0f;
 	constexpr float kSubsectionContentIndent = 6.0f;
+	constexpr float kMicroContentIndent = 4.0f;
 	constexpr ImGuiMCP::ImVec4 kSteel{ 0.12f, 0.20f, 0.28f, 0.96f };
 	constexpr ImGuiMCP::ImVec4 kSteelHover{ 0.17f, 0.29f, 0.40f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kSteelActive{ 0.20f, 0.35f, 0.47f, 1.0f };
@@ -84,6 +85,7 @@ namespace
 	constexpr ImGuiMCP::ImVec4 kBlueActive{ 0.44f, 0.72f, 0.95f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kGold{ 0.85f, 0.66f, 0.36f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kCyan{ 0.45f, 0.74f, 0.91f, 1.0f };
+	constexpr ImGuiMCP::ImVec4 kMicroCyan{ 0.39f, 0.65f, 0.80f, 1.0f };
 	constexpr ImGuiMCP::ImVec4 kBorder{ 0.23f, 0.33f, 0.42f, 0.85f };
 	constexpr ImGuiMCP::ImVec4 kSubsectionSurface{ 0.12f, 0.24f, 0.32f, 0.52f };
 	constexpr ImGuiMCP::ImVec4 kSubsectionHover{ 0.18f, 0.31f, 0.41f, 0.78f };
@@ -106,6 +108,8 @@ namespace
 	constexpr unsigned int kSoundIcon = 0xf028;     // volume-up
 	constexpr unsigned int kTimingIcon = 0xf017;    // clock
 	constexpr unsigned int kOpacityIcon = 0xf042;   // adjust
+	constexpr unsigned int kIndicatorIcon = 0xf06e; // eye
+	constexpr unsigned int kPositionIcon = 0xf047;  // arrows
 
 	enum class VisualKind : std::size_t
 	{
@@ -124,20 +128,26 @@ namespace
 	{
 		None,
 		Gamepad,
+		Keyboard,
 		Pointer,
+		Indicator,
+		Position,
 		Size,
 		Sound,
 		Timing,
 		Opacity,
 		Image,
+		Color,
 		Count
 	};
 
 	struct GroupStats
 	{
 		std::size_t directLeaves = 0;
+		std::size_t directInteractiveLeaves = 0;
 		std::size_t directGroups = 0;
 		std::size_t descendantLeaves = 0;
+		std::vector<const void*> childGroups;
 		std::array<std::size_t, static_cast<std::size_t>(VisualKind::Count)> kinds{};
 		std::array<std::size_t, static_cast<std::size_t>(SemanticRole::Count)> semantics{};
 		std::string_view soleLeafLabel;
@@ -146,11 +156,12 @@ namespace
 	struct GroupFrame
 	{
 		bool hasHeading = false;
-		bool indented = false;
-		bool contentIndented = false;
+		float indentWidth = 0.0f;
+		float contentIndent = 0.0f;
 		bool major = false;
 		bool subsection = false;
 		bool interactiveSubsection = false;
+		const void* identity = nullptr;
 	};
 
 	struct PresentationState
@@ -169,6 +180,7 @@ namespace
 	bool g_hasStyleVars = false;
 	bool g_hasFontAwesome = false;
 	bool g_hasIconOverlay = false;
+	bool g_hasCompactTree = false;
 
 	struct RowLayout
 	{
@@ -213,11 +225,15 @@ namespace
 		const auto id = UpperAscii(a_id);
 		const auto has = [&](std::string_view term) { return id.find(term) != std::string::npos; };
 		if (has("GAMEPAD") || has("CONTROLLER") || has("DPAD")) return SemanticRole::Gamepad;
-		if (has("CURSOR") || has("POINTER") || has("MOUSE") || has("POSITION") || has("OFFSET")) return SemanticRole::Pointer;
+		if (has("CURSOR") || has("POINTER")) return SemanticRole::Pointer;
+		if (has("INDICATOR")) return SemanticRole::Indicator;
+		if (has("POSITION") || has("OFFSET")) return SemanticRole::Position;
+		if (has("KEYBOARD") || has("MOUSE") || has("INPUT") || has("BIND")) return SemanticRole::Keyboard;
 		if (has("VOLUME") || has("SOUND") || has("AUDIO")) return SemanticRole::Sound;
 		if (has("DELAY") || has("DURATION") || has("COOLDOWN") || has("TIME")) return SemanticRole::Timing;
 		if (has("OPACITY") || has("ALPHA")) return SemanticRole::Opacity;
 		if (has("RADIUS") || has("DIAMETER") || has("SIZE") || has("SCALE") || has("WIDTH") || has("HEIGHT")) return SemanticRole::Size;
+		if (has("COLOR") || has("COLOUR") || has("TINT")) return SemanticRole::Color;
 		if (has("SKIN") || has("TEXTURE") || has("IMAGE") || has("RESKIN")) return SemanticRole::Image;
 		return SemanticRole::None;
 	}
@@ -226,12 +242,16 @@ namespace
 	{
 		switch (a_role) {
 		case SemanticRole::Gamepad: return kGamepadIcon;
+		case SemanticRole::Keyboard: return kKeyboardIcon;
 		case SemanticRole::Pointer: return kPointerIcon;
+		case SemanticRole::Indicator: return kIndicatorIcon;
+		case SemanticRole::Position: return kPositionIcon;
 		case SemanticRole::Size: return kSizeIcon;
 		case SemanticRole::Sound: return kSoundIcon;
 		case SemanticRole::Timing: return kTimingIcon;
 		case SemanticRole::Opacity: return kOpacityIcon;
 		case SemanticRole::Image: return kColorIcon;
+		case SemanticRole::Color: return kColorIcon;
 		default: return 0;
 		}
 	}
@@ -286,7 +306,36 @@ namespace
 		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
 		const auto keymaps = a_stats.kinds[static_cast<std::size_t>(VisualKind::Keymap)];
 		return interactiveLeaves >= 4 &&
-			(a_stats.directLeaves >= 3 || a_stats.directGroups == 0 || keymaps >= 5);
+			(a_stats.directInteractiveLeaves >= 3 || a_stats.directGroups == 0 || keymaps >= 5 ||
+				(a_stats.directGroups >= 2 && interactiveLeaves >= 8));
+	}
+
+	bool ShouldCollapseMicro(const GroupStats& a_stats)
+	{
+		const auto interactiveLeaves = a_stats.descendantLeaves - a_stats.kinds[static_cast<std::size_t>(VisualKind::Text)];
+		return a_stats.directInteractiveLeaves >= 3 || interactiveLeaves >= 4 ||
+			a_stats.kinds[static_cast<std::size_t>(VisualKind::Keymap)] >= 2 ||
+			a_stats.kinds[static_cast<std::size_t>(VisualKind::Slider)] >= 3;
+	}
+
+	bool OnlyMeaningfulChild(const PresentationState& a_state)
+	{
+		if (a_state.groupStack.empty()) {
+			return false;
+		}
+		const auto parent = a_state.groupStats.find(a_state.groupStack.back().identity);
+		if (parent == a_state.groupStats.end() || parent->second.directInteractiveLeaves != 0) {
+			return false;
+		}
+		std::size_t meaningfulChildren = 0;
+		for (const auto* child : parent->second.childGroups) {
+			const auto found = a_state.groupStats.find(child);
+			if (found != a_state.groupStats.end() &&
+				found->second.descendantLeaves > found->second.kinds[static_cast<std::size_t>(VisualKind::Text)]) {
+				++meaningfulChildren;
+			}
+		}
+		return meaningfulChildren == 1;
 	}
 
 	void DrawIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
@@ -300,14 +349,15 @@ namespace
 		FontAwesome::Pop();
 	}
 
-	void DrawHeaderIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
+	void DrawHeaderIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color, bool a_compact = false)
 	{
 		if (!g_hasFontAwesome || !g_hasIconOverlay) {
 			return;
 		}
 		const auto afterHeader = ImGuiMCP::GetCursorScreenPos();
 		const auto header = ImGuiMCP::GetItemRectMin();
-		ImGuiMCP::SetCursorScreenPos({ header.x + ImGuiMCP::GetFrameHeight() * 0.94f, header.y + 4.0f });
+		ImGuiMCP::SetCursorScreenPos({ header.x + ImGuiMCP::GetFrameHeight() * 0.94f,
+			header.y + (a_compact ? 1.0f : 4.0f) });
 		DrawIcon(a_codepoint, a_color);
 		ImGuiMCP::SetCursorScreenPos(afterHeader);
 	}
@@ -447,14 +497,18 @@ namespace
 	{
 		ImGuiMCP::PushID(a_group.identity);
 		const auto found = a_state.groupStats.find(a_group.identity);
-		const GroupStats stats = found == a_state.groupStats.end() ? GroupStats{} : found->second;
+		const GroupStats emptyStats{};
+		const GroupStats& stats = found == a_state.groupStats.end() ? emptyStats : found->second;
 		const bool repeatsPage = a_state.headingDepth == 0 && RepeatsPageName(TextOrEmpty(a_group.label), a_state.pageName);
 		const bool singleLeafWrapper = a_state.headingDepth == 0 && stats.descendantLeaves == 1 &&
 			stats.directGroups == 0 && stats.soleLeafLabel == TextOrEmpty(a_group.label);
 		GroupFrame frame{};
+		frame.identity = a_group.identity;
 		bool showChildren = true;
 		if (!repeatsPage && stats.descendantLeaves != 0) {
-			ImGuiMCP::Spacing();
+			if (a_state.headingDepth <= 1) {
+				ImGuiMCP::Spacing();
+			}
 			if (singleLeafWrapper) {
 				SecondaryText(a_group.description);
 			} else if (a_state.headingDepth == 0) {
@@ -485,11 +539,11 @@ namespace
 				frame.major = true;
 				if (showChildren) {
 					ImGuiMCP::Indent(kSubsectionIndent);
-					frame.indented = true;
+					frame.indentWidth = kSubsectionIndent;
 				}
-			} else {
+			} else if (a_state.headingDepth == 1) {
 				ImGuiMCP::Indent(kSubsectionIndent);
-				frame.indented = true;
+				frame.indentWidth = kSubsectionIndent;
 				const bool collapsible = g_hasThemeStyles && a_state.interactiveDepth == 0 && ShouldCollapseSubsection(stats);
 				if (collapsible) {
 					const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
@@ -528,7 +582,50 @@ namespace
 				frame.subsection = true;
 				if (showChildren) {
 					ImGuiMCP::Indent(kSubsectionContentIndent);
-					frame.contentIndented = true;
+					frame.contentIndent = kSubsectionContentIndent;
+				}
+			} else {
+				ImGuiMCP::Indent(kSubsectionContentIndent);
+				frame.indentWidth = kSubsectionContentIndent;
+				const bool collapsible = a_state.headingDepth == 2 && g_hasThemeStyles && ShouldCollapseMicro(stats);
+				if (collapsible) {
+					const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
+						UpperAscii(TextOrEmpty(a_group.label)) + "###micro";
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kMicroCyan);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, WithAlpha(kMicroCyan, 0.0f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, WithAlpha(kMicroCyan, 0.11f));
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, WithAlpha(kMicroCyan, 0.18f));
+					if (g_hasStyleVars) {
+						ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 2.0f, 1.0f });
+					}
+					ImGuiMCP::SetNextItemOpen(OnlyMeaningfulChild(a_state), ImGuiMCP::ImGuiCond_FirstUseEver);
+					showChildren = g_hasCompactTree ?
+						ImGuiMCP::TreeNodeEx(label.c_str(),
+							ImGuiMCP::ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiMCP::ImGuiTreeNodeFlags_SpanAvailWidth) :
+						ImGuiMCP::CollapsingHeader(label.c_str());
+					DrawHeaderIcon(IconForGroup(stats), WithAlpha(kMicroCyan, 0.85f), true);
+					if (g_hasStyleVars) {
+						ImGuiMCP::PopStyleVar();
+					}
+					ImGuiMCP::PopStyleColor(4);
+				} else {
+					if (g_hasFontAwesome) {
+						DrawIcon(IconForGroup(stats), WithAlpha(kMicroCyan, 0.85f));
+						ImGuiMCP::SameLine();
+					}
+					ImGuiMCP::TextColored(kMicroCyan, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
+				}
+				if (g_hasThemeStyles) {
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.25f));
+				}
+				ImGuiMCP::Separator();
+				if (g_hasThemeStyles) {
+					ImGuiMCP::PopStyleColor();
+				}
+				frame.hasHeading = true;
+				if (showChildren) {
+					ImGuiMCP::Indent(kMicroContentIndent);
+					frame.contentIndent = kMicroContentIndent;
 				}
 			}
 			if (frame.hasHeading && showChildren && a_group.description && a_group.description[0] != '\0') {
@@ -552,11 +649,11 @@ namespace
 		if (frame.interactiveSubsection) {
 			--a_state.interactiveDepth;
 		}
-		if (frame.contentIndented) {
-			ImGuiMCP::Unindent(kSubsectionContentIndent);
+		if (frame.contentIndent > 0.0f) {
+			ImGuiMCP::Unindent(frame.contentIndent);
 		}
-		if (frame.indented) {
-			ImGuiMCP::Unindent(kSubsectionIndent);
+		if (frame.indentWidth > 0.0f) {
+			ImGuiMCP::Unindent(frame.indentWidth);
 		}
 		if (frame.major || frame.subsection) {
 			ImGuiMCP::Spacing();
@@ -573,6 +670,9 @@ namespace
 			if (!groupPath.empty()) {
 				auto& group = stats[groupPath.back()];
 				++group.directLeaves;
+				if (kind != VisualKind::Text) {
+					++group.directInteractiveLeaves;
+				}
 				group.soleLeafLabel = group.directLeaves == 1 ? TextOrEmpty(label) : std::string_view{};
 				for (const auto* identity : groupPath) {
 					auto& ancestor = stats[identity];
@@ -592,6 +692,7 @@ namespace
 			}
 			if (!groupPath.empty()) {
 				++stats[groupPath.back()].directGroups;
+				stats[groupPath.back()].childGroups.push_back(group.identity);
 			}
 			groupPath.push_back(group.identity);
 			return true;
@@ -1004,6 +1105,7 @@ namespace SkseMenuFrameworkIntegration
 		g_hasIconOverlay = ::GetProcAddress(module, "igGetCursorScreenPos") &&
 			::GetProcAddress(module, "igSetCursorScreenPos") &&
 			::GetProcAddress(module, "igGetItemRectMin");
+		g_hasCompactTree = ::GetProcAddress(module, "igTreeNodeEx_Str") != nullptr;
 
 		std::array<ModSettings::PageVisit, kMaximumRegisteredPages> pages = {};
 		std::size_t pageCount = 0;
