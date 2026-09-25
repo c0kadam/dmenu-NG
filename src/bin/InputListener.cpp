@@ -390,6 +390,23 @@ static inline std::uint32_t GetGamepadIndex(RE::BSWin32GamepadDevice::Key a_key)
 	return index != kInvalid ? index + kGamepadOffset : kInvalid;
 }
 
+std::optional<std::uint32_t> InputListener::ToInputCode(const RE::ButtonEvent& a_button)
+{
+	const auto scanCode = a_button.GetIDCode();
+	switch (a_button.GetDevice()) {
+	case RE::INPUT_DEVICE::kKeyboard:
+		return scanCode + kKeyboardOffset;
+	case RE::INPUT_DEVICE::kMouse:
+		return scanCode + kMouseOffset;
+	case RE::INPUT_DEVICE::kGamepad: {
+		const auto input = GetGamepadIndex(static_cast<RE::BSWin32GamepadDevice::Key>(scanCode));
+		return input == kInvalid ? std::nullopt : std::optional<std::uint32_t>{ input };
+	}
+	default:
+		return std::nullopt;
+	}
+}
+
 static ImGuiKey MapGamepadKeyToImGui(RE::BSWin32GamepadDevice::Key a_key)
 {
 	using Key = RE::BSWin32GamepadDevice::Key;
@@ -529,26 +546,11 @@ void InputListener::ProcessEvent(RE::InputEvent** a_event)
 		} else if (const auto button = event->AsButtonEvent()) {
 			auto scan_code = button->GetIDCode();
 			const auto device = button->GetDevice();
-
-			using DeviceType = RE::INPUT_DEVICE;
-			std::uint32_t input = scan_code;
-			switch (device) {
-			case DeviceType::kMouse:
-				input += kMouseOffset;
-				break;
-			case DeviceType::kKeyboard:
-				input += kKeyboardOffset;
-				break;
-			case DeviceType::kGamepad:
-				input = GetGamepadIndex((RE::BSWin32GamepadDevice::Key)input);
-				break;
-			default:
+			const auto inputCode = ToInputCode(*button);
+			if (!inputCode) {
 				continue;
 			}
-
-			if (input == kInvalid) {
-				continue;
-			}
+			const auto input = *inputCode;
 			if (button->IsDown()) {
 				ModSettings::ObserveKeymapCaptureInput(input, true);
 			} else if (!button->IsPressed()) {

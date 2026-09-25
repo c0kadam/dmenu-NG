@@ -16,6 +16,7 @@
 
 #include "include/lib/SKSEMenuFramework.h"
 
+#include "../InputListener.h"
 #include "../Utils.h"
 #include "../menus/ModSettings.h"
 
@@ -184,6 +185,10 @@ namespace
 	bool g_hasFontAwesome = false;
 	bool g_hasIconOverlay = false;
 	bool g_hasCompactTree = false;
+	bool g_hasInputBridge = false;
+	std::int64_t g_inputRegistrationId = -1;
+	using FrameworkInputCallback = bool(__stdcall*)(RE::InputEvent*);
+	using RegisterInputEventFunction = std::int64_t (*)(FrameworkInputCallback);
 
 	struct RowLayout
 	{
@@ -1087,10 +1092,18 @@ namespace
 			if (row.table) {
 				ImGuiMCP::SameLine();
 			}
+			if (!g_hasInputBridge) {
+				ImGuiMCP::BeginDisabled();
+			}
 			if (ImGuiMCP::Button("Remap")) {
 				action = ModSettings::KeymapAction::BeginCapture;
 			}
 			controlHelp = ItemRequestsHelp();
+			if (!g_hasInputBridge) {
+				ImGuiMCP::EndDisabled();
+				ImGuiMCP::SameLine();
+				SecondaryText("Capture unavailable");
+			}
 			if (a_keymap.mapped) {
 				ImGuiMCP::SameLine();
 				if (ImGuiMCP::Button("Unmap")) {
@@ -1209,6 +1222,28 @@ namespace
 
 	const auto kRenderCallbacks = MakeRenderCallbacks(std::make_index_sequence<kMaximumRegisteredPages>{});
 
+	bool __stdcall ObserveFrameworkInput(RE::InputEvent* a_event)
+	{
+		const auto* button = a_event ? a_event->AsButtonEvent() : nullptr;
+		if (!button) {
+			return false;
+		}
+		const auto inputCode = InputListener::ToInputCode(*button);
+		if (!inputCode) {
+			return false;
+		}
+		const bool capturing = ModSettings::IsExternalKeymapCaptureActive();
+		if (button->IsDown()) {
+			ModSettings::ObserveKeymapCaptureInput(*inputCode, true);
+			if (capturing) {
+				ModSettings::submitInput(*inputCode);
+			}
+		} else if (!button->IsPressed()) {
+			ModSettings::ObserveKeymapCaptureInput(*inputCode, false);
+		}
+		return capturing;
+	}
+
 	bool HasRequiredExports(HMODULE a_module)
 	{
 		for (const auto* exportName : kRequiredExportNames) {
@@ -1259,6 +1294,15 @@ namespace SkseMenuFrameworkIntegration
 			logger::error("SKSE Menu Framework frontend supports at most {} settings pages", kMaximumRegisteredPages);
 			return;
 		}
+
+		const auto registerInput = reinterpret_cast<RegisterInputEventFunction>(
+			::GetProcAddress(module, "RegisterInpoutEvent"));
+		if (registerInput) {
+			g_inputRegistrationId = registerInput(&ObserveFrameworkInput);
+			g_hasInputBridge = g_inputRegistrationId >= 0;
+		}
+		logger::info("SKSE Menu Framework input bridge {}",
+			g_hasInputBridge ? "registered" : "unavailable");
 
 		SKSEMenuFramework::SetSection("dMenu");
 		for (std::size_t index = 0; index < pageCount; ++index) {

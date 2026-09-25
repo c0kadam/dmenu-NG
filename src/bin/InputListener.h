@@ -1,6 +1,9 @@
 #pragma once
 #include "PCH.h"
 
+#include <cstdint>
+#include <optional>
+
 class InputListener
 {
 public:
@@ -11,6 +14,7 @@ public:
 	}
 
 	void ProcessEvent(RE::InputEvent** a_event);
+	static std::optional<std::uint32_t> ToInputCode(const RE::ButtonEvent& a_button);
 
 	static void ApplyBlockedImGuiGamepadKeys();
 };
