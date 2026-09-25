@@ -946,52 +946,85 @@ namespace
 		}
 		const int styleColors = PushControlStyle(VisualKind::Keymap);
 		bool controlHelp = false;
-		if (a_keymap.capturing) {
-			SecondaryText("Press a key...");
-			if (row.table) {
-				ImGuiMCP::SameLine();
-			}
-			if (ImGuiMCP::Button("Cancel")) {
-				action = ModSettings::KeymapAction::CancelCapture;
-			}
-			g_cancelTarget.page = a_pageIdentity;
-			g_cancelTarget.keymap = a_keymap.identity;
-			g_cancelTarget.hovered = ImGuiMCP::IsItemHovered();
-			g_cancelTarget.renderedThisPage = true;
-			g_cancelTarget.renderedFrame = g_hasFrameCount ? ImGuiMCP::GetFrameCount() : -1;
-			if (action == ModSettings::KeymapAction::CancelCapture) {
-				if (g_cancelTarget.passingMouseClick) {
-					ModSettings::ObserveKeymapCaptureInput(kMouseLeftInput, false);
-				}
+		const float actionWidth = 96.0f;
+		const float unmapWidth = 84.0f;
+		const float controlWidth = ImGuiMCP::GetContentRegionAvail().x;
+		const auto drawBinding = [&] {
+			if (!a_keymap.capturing && g_cancelTarget.keymap == a_keymap.identity) {
 				g_cancelTarget = {};
 			}
-			controlHelp = ItemRequestsHelp();
-		} else {
-			if (g_cancelTarget.keymap == a_keymap.identity) {
-				g_cancelTarget = {};
-			}
-			ImGuiMCP::TextUnformatted(TextOrEmpty(a_keymap.bindingLabel));
-			if (row.table) {
-				ImGuiMCP::SameLine();
-			}
-			if (!g_hasInputBridge) {
-				ImGuiMCP::BeginDisabled();
-			}
-			if (ImGuiMCP::Button("Remap")) {
-				action = ModSettings::KeymapAction::BeginCapture;
-			}
-			controlHelp = ItemRequestsHelp();
-			if (!g_hasInputBridge) {
-				ImGuiMCP::EndDisabled();
-				ImGuiMCP::SameLine();
+			const auto color = a_keymap.capturing ? Palette().interactionActive :
+				a_keymap.mapped ? (CurrentTheme() == FrontendTheme::SteelGold ?
+					Palette().structuralAccent : Palette().subsectionAccent) : Palette().secondaryText;
+			ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, color);
+			ImGuiMCP::TextWrapped("%s", a_keymap.capturing ? "Press a key..." : TextOrEmpty(a_keymap.bindingLabel));
+			ImGuiMCP::PopStyleColor();
+			if (!a_keymap.capturing && !g_hasInputBridge) {
 				SecondaryText("Capture unavailable");
 			}
-			if (a_keymap.mapped) {
-				ImGuiMCP::SameLine();
-				if (ImGuiMCP::Button("Unmap")) {
+		};
+		const auto drawAction = [&](bool a_fixedWidth) {
+			const ImGuiMCP::ImVec2 buttonSize{ a_fixedWidth ? actionWidth - 12.0f : 0.0f, 0.0f };
+			if (a_keymap.capturing) {
+				if (ImGuiMCP::Button("Cancel", buttonSize)) {
+					action = ModSettings::KeymapAction::CancelCapture;
+				}
+				g_cancelTarget.page = a_pageIdentity;
+				g_cancelTarget.keymap = a_keymap.identity;
+				g_cancelTarget.hovered = ImGuiMCP::IsItemHovered();
+				g_cancelTarget.renderedThisPage = true;
+				g_cancelTarget.renderedFrame = g_hasFrameCount ? ImGuiMCP::GetFrameCount() : -1;
+				if (action == ModSettings::KeymapAction::CancelCapture) {
+					if (g_cancelTarget.passingMouseClick) {
+						ModSettings::ObserveKeymapCaptureInput(kMouseLeftInput, false);
+					}
+					g_cancelTarget = {};
+				}
+				controlHelp = ItemRequestsHelp();
+			} else {
+				if (!g_hasInputBridge) {
+					ImGuiMCP::BeginDisabled();
+				}
+				if (ImGuiMCP::Button("Remap", buttonSize)) {
+					action = ModSettings::KeymapAction::BeginCapture;
+				}
+				controlHelp = ItemRequestsHelp();
+				if (!g_hasInputBridge) {
+					ImGuiMCP::EndDisabled();
+				}
+			}
+		};
+		const auto drawUnmap = [&](bool a_fixedWidth) {
+			if (!a_keymap.capturing && a_keymap.mapped) {
+				const ImGuiMCP::ImVec2 buttonSize{ a_fixedWidth ? unmapWidth - 12.0f : 0.0f, 0.0f };
+				if (ImGuiMCP::Button("Unmap", buttonSize)) {
 					action = ModSettings::KeymapAction::Unmap;
 				}
 				controlHelp |= ItemRequestsHelp();
+			}
+		};
+		if (controlWidth >= actionWidth + unmapWidth + 120.0f &&
+			ImGuiMCP::BeginTable("##keymap_controls", 3,
+				ImGuiMCP::ImGuiTableFlags_NoSavedSettings | ImGuiMCP::ImGuiTableFlags_SizingStretchProp)) {
+			ImGuiMCP::TableSetupColumn("Binding", ImGuiMCP::ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGuiMCP::TableSetupColumn("Action", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, actionWidth);
+			ImGuiMCP::TableSetupColumn("Unmap", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, unmapWidth);
+			ImGuiMCP::TableNextRow(0, ImGuiMCP::GetFrameHeight());
+			ImGuiMCP::TableSetColumnIndex(0);
+			drawBinding();
+			ImGuiMCP::TableSetColumnIndex(1);
+			drawAction(true);
+			ImGuiMCP::TableSetColumnIndex(2);
+			drawUnmap(true);
+			ImGuiMCP::EndTable();
+		} else {
+			drawBinding();
+			drawAction(false);
+			if (!a_keymap.capturing && a_keymap.mapped) {
+				if (controlWidth >= actionWidth + unmapWidth + 12.0f) {
+					ImGuiMCP::SameLine();
+				}
+				drawUnmap(false);
 			}
 		}
 		if (styleColors) {
