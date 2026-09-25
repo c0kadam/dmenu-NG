@@ -161,12 +161,15 @@ namespace
 		bool major = false;
 		bool subsection = false;
 		bool interactiveSubsection = false;
+		bool virtualActive = false;
+		bool virtualVisible = true;
 		const void* identity = nullptr;
 	};
 
 	struct PresentationState
 	{
 		std::unordered_map<const void*, GroupStats> groupStats;
+		std::unordered_map<const void*, GroupStats> virtualStats;
 		std::vector<GroupFrame> groupStack;
 		std::string_view pageName;
 		std::string_view pageDescription;
@@ -191,6 +194,19 @@ namespace
 	const char* TextOrEmpty(const char* a_text)
 	{
 		return a_text ? a_text : "";
+	}
+
+	bool IsStructuralText(const ModSettings::TextVisit& a_text)
+	{
+		const std::string_view label = TextOrEmpty(a_text.label);
+		if ((a_text.description && a_text.description[0] != '\0') || label.empty() || label.size() > 64 ||
+			label.find_first_of("\r\n") != std::string_view::npos ||
+			label.find_first_not_of(" \t-_=.") == std::string_view::npos) {
+			return false;
+		}
+		const auto last = label.find_last_not_of(" \t");
+		return last != std::string_view::npos &&
+			std::string_view(".!?;:").find(label[last]) == std::string_view::npos;
 	}
 
 	bool ItemRequestsHelp()
@@ -318,6 +334,13 @@ namespace
 			a_stats.kinds[static_cast<std::size_t>(VisualKind::Slider)] >= 3;
 	}
 
+	bool ShouldCollapseVirtual(const GroupStats& a_stats)
+	{
+		return a_stats.directInteractiveLeaves >= 3 ||
+			a_stats.kinds[static_cast<std::size_t>(VisualKind::Slider)] >= 2 ||
+			a_stats.kinds[static_cast<std::size_t>(VisualKind::Keymap)] >= 2;
+	}
+
 	bool OnlyMeaningfulChild(const PresentationState& a_state)
 	{
 		if (a_state.groupStack.empty()) {
@@ -336,6 +359,26 @@ namespace
 			}
 		}
 		return meaningfulChildren == 1;
+	}
+
+	bool OnlyMeaningfulVirtualChild(const PresentationState& a_state, const GroupStats& a_run)
+	{
+		if (a_state.groupStack.empty()) {
+			return false;
+		}
+		const auto parent = a_state.groupStats.find(a_state.groupStack.back().identity);
+		if (parent == a_state.groupStats.end() ||
+			parent->second.directInteractiveLeaves != a_run.directInteractiveLeaves) {
+			return false;
+		}
+		for (const auto* child : parent->second.childGroups) {
+			const auto found = a_state.groupStats.find(child);
+			if (found != a_state.groupStats.end() &&
+				found->second.descendantLeaves > found->second.kinds[static_cast<std::size_t>(VisualKind::Text)]) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	void DrawIcon(unsigned int a_codepoint, ImGuiMCP::ImVec4 a_color)
@@ -360,6 +403,33 @@ namespace
 			header.y + (a_compact ? 1.0f : 4.0f) });
 		DrawIcon(a_codepoint, a_color);
 		ImGuiMCP::SetCursorScreenPos(afterHeader);
+	}
+
+	bool DrawMicroDisclosure(const char* a_label, const GroupStats& a_stats, bool a_defaultOpen)
+	{
+		const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
+			UpperAscii(TextOrEmpty(a_label)) + "###micro";
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kMicroCyan);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, WithAlpha(kMicroCyan, 0.0f));
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, WithAlpha(kMicroCyan, 0.11f));
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, WithAlpha(kMicroCyan, 0.18f));
+		if (g_hasStyleVars) {
+			ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 2.0f, 1.0f });
+		}
+		ImGuiMCP::SetNextItemOpen(a_defaultOpen, ImGuiMCP::ImGuiCond_FirstUseEver);
+		const bool open = g_hasCompactTree ?
+			ImGuiMCP::TreeNodeEx(label.c_str(),
+				ImGuiMCP::ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiMCP::ImGuiTreeNodeFlags_SpanAvailWidth) :
+			ImGuiMCP::CollapsingHeader(label.c_str());
+		DrawHeaderIcon(IconForGroup(a_stats), WithAlpha(kMicroCyan, 0.85f), true);
+		if (g_hasStyleVars) {
+			ImGuiMCP::PopStyleVar();
+		}
+		ImGuiMCP::PopStyleColor(4);
+		ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.25f));
+		ImGuiMCP::Separator();
+		ImGuiMCP::PopStyleColor();
+		return open;
 	}
 
 	int PushControlStyle(VisualKind a_kind)
@@ -493,8 +563,28 @@ namespace
 		ImGuiMCP::PopID();
 	}
 
+	void CloseVirtualGroup(PresentationState& a_state)
+	{
+		if (a_state.groupStack.empty()) {
+			return;
+		}
+		auto& frame = a_state.groupStack.back();
+		if (frame.virtualActive && frame.virtualVisible) {
+			ImGuiMCP::Unindent(kMicroContentIndent);
+		}
+		frame.virtualActive = false;
+		frame.virtualVisible = true;
+	}
+
+	bool VirtualContentVisible(const PresentationState& a_state)
+	{
+		return a_state.groupStack.empty() || !a_state.groupStack.back().virtualActive ||
+			a_state.groupStack.back().virtualVisible;
+	}
+
 	bool BeginGroup(PresentationState& a_state, const ModSettings::GroupVisit& a_group)
 	{
+		CloseVirtualGroup(a_state);
 		ImGuiMCP::PushID(a_group.identity);
 		const auto found = a_state.groupStats.find(a_group.identity);
 		const GroupStats emptyStats{};
@@ -589,25 +679,7 @@ namespace
 				frame.indentWidth = kSubsectionContentIndent;
 				const bool collapsible = a_state.headingDepth == 2 && g_hasThemeStyles && ShouldCollapseMicro(stats);
 				if (collapsible) {
-					const auto label = std::string(g_hasFontAwesome && g_hasIconOverlay ? "      " : "") +
-						UpperAscii(TextOrEmpty(a_group.label)) + "###micro";
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kMicroCyan);
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Header, WithAlpha(kMicroCyan, 0.0f));
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderHovered, WithAlpha(kMicroCyan, 0.11f));
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_HeaderActive, WithAlpha(kMicroCyan, 0.18f));
-					if (g_hasStyleVars) {
-						ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 2.0f, 1.0f });
-					}
-					ImGuiMCP::SetNextItemOpen(OnlyMeaningfulChild(a_state), ImGuiMCP::ImGuiCond_FirstUseEver);
-					showChildren = g_hasCompactTree ?
-						ImGuiMCP::TreeNodeEx(label.c_str(),
-							ImGuiMCP::ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiMCP::ImGuiTreeNodeFlags_SpanAvailWidth) :
-						ImGuiMCP::CollapsingHeader(label.c_str());
-					DrawHeaderIcon(IconForGroup(stats), WithAlpha(kMicroCyan, 0.85f), true);
-					if (g_hasStyleVars) {
-						ImGuiMCP::PopStyleVar();
-					}
-					ImGuiMCP::PopStyleColor(4);
+					showChildren = DrawMicroDisclosure(a_group.label, stats, OnlyMeaningfulChild(a_state));
 				} else {
 					if (g_hasFontAwesome) {
 						DrawIcon(IconForGroup(stats), WithAlpha(kMicroCyan, 0.85f));
@@ -615,12 +687,14 @@ namespace
 					}
 					ImGuiMCP::TextColored(kMicroCyan, "%s", UpperAscii(TextOrEmpty(a_group.label)).c_str());
 				}
-				if (g_hasThemeStyles) {
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.25f));
-				}
-				ImGuiMCP::Separator();
-				if (g_hasThemeStyles) {
-					ImGuiMCP::PopStyleColor();
+				if (!collapsible) {
+					if (g_hasThemeStyles) {
+						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Separator, WithAlpha(kCyan, 0.25f));
+					}
+					ImGuiMCP::Separator();
+					if (g_hasThemeStyles) {
+						ImGuiMCP::PopStyleColor();
+					}
 				}
 				frame.hasHeading = true;
 				if (showChildren) {
@@ -641,6 +715,7 @@ namespace
 
 	void EndGroup(PresentationState& a_state)
 	{
+		CloseVirtualGroup(a_state);
 		const GroupFrame frame = a_state.groupStack.back();
 		a_state.groupStack.pop_back();
 		if (frame.hasHeading) {
@@ -662,10 +737,12 @@ namespace
 	}
 
 	std::unordered_map<const void*, GroupStats> CollectGroupStats(
-		const void* a_pageIdentity, std::string_view a_pageName, std::string_view& a_pageDescription)
+		const void* a_pageIdentity, std::string_view a_pageName, std::string_view& a_pageDescription,
+		std::unordered_map<const void*, GroupStats>& a_virtualStats)
 	{
 		std::unordered_map<const void*, GroupStats> stats;
 		std::vector<const void*> groupPath;
+		std::vector<const void*> activeMarkers;
 		const auto countLeaf = [&](const char* label, VisualKind kind, SemanticRole role = SemanticRole::None) {
 			if (!groupPath.empty()) {
 				auto& group = stats[groupPath.back()];
@@ -682,6 +759,15 @@ namespace
 						++ancestor.semantics[static_cast<std::size_t>(role)];
 					}
 				}
+				if (kind != VisualKind::Text && activeMarkers.back()) {
+					auto& run = a_virtualStats[activeMarkers.back()];
+					++run.directInteractiveLeaves;
+					++run.descendantLeaves;
+					++run.kinds[static_cast<std::size_t>(kind)];
+					if (role != SemanticRole::None) {
+						++run.semantics[static_cast<std::size_t>(role)];
+					}
+				}
 			}
 		};
 		ModSettings::PageSettingsCallbacks callbacks{};
@@ -693,11 +779,16 @@ namespace
 			if (!groupPath.empty()) {
 				++stats[groupPath.back()].directGroups;
 				stats[groupPath.back()].childGroups.push_back(group.identity);
+				activeMarkers.back() = nullptr;
 			}
 			groupPath.push_back(group.identity);
+			activeMarkers.push_back(nullptr);
 			return true;
 		};
-		callbacks.endGroup = [&](const ModSettings::GroupVisit&) { groupPath.pop_back(); };
+		callbacks.endGroup = [&](const ModSettings::GroupVisit&) {
+			groupPath.pop_back();
+			activeMarkers.pop_back();
+		};
 		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> {
 			countLeaf(visit.label, VisualKind::Checkbox, SemanticForId(visit.semanticId));
 			return std::nullopt;
@@ -708,7 +799,13 @@ namespace
 		};
 		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> { countLeaf(visit.label, VisualKind::Dropdown); return std::nullopt; };
 		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) { countLeaf(visit.label, VisualKind::Textbox); return ModSettings::TextboxUpdate{}; };
-		callbacks.text = [&](const ModSettings::TextVisit& visit) { countLeaf(visit.label, VisualKind::Text); };
+		callbacks.text = [&](const ModSettings::TextVisit& visit) {
+			if (!activeMarkers.empty() && IsStructuralText(visit)) {
+				activeMarkers.back() = visit.identity;
+				a_virtualStats.try_emplace(visit.identity);
+			}
+			countLeaf(visit.label, VisualKind::Text);
+		};
 		callbacks.color = [&](const ModSettings::ColorVisit& visit) { countLeaf(visit.label, VisualKind::Color); return ModSettings::ColorUpdate{}; };
 		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
 			countLeaf(visit.label, VisualKind::Keymap, SemanticForId(visit.semanticId));
@@ -902,6 +999,32 @@ namespace
 		ImGuiMCP::PopID();
 	}
 
+	void DrawPresentationText(PresentationState& a_state, const ModSettings::TextVisit& a_text)
+	{
+		const auto found = a_state.virtualStats.find(a_text.identity);
+		if (found == a_state.virtualStats.end()) {
+			if (VirtualContentVisible(a_state)) {
+				DrawText(a_text);
+			}
+			return;
+		}
+		CloseVirtualGroup(a_state);
+		if (a_state.headingDepth != 2 || !g_hasThemeStyles || !ShouldCollapseVirtual(found->second)) {
+			DrawText(a_text);
+			return;
+		}
+		ImGuiMCP::PushID(a_text.identity);
+		const bool open = DrawMicroDisclosure(a_text.label, found->second,
+			OnlyMeaningfulVirtualChild(a_state, found->second));
+		ImGuiMCP::PopID();
+		auto& frame = a_state.groupStack.back();
+		frame.virtualActive = true;
+		frame.virtualVisible = open;
+		if (open) {
+			ImGuiMCP::Indent(kMicroContentIndent);
+		}
+	}
+
 	ModSettings::ColorUpdate DrawColor(const ModSettings::ColorVisit& a_color)
 	{
 		float value[4] = {
@@ -1021,7 +1144,8 @@ namespace
 	void RenderPage(const void* a_pageIdentity, std::string_view a_pageName)
 	{
 		PresentationState presentation{};
-		presentation.groupStats = CollectGroupStats(a_pageIdentity, a_pageName, presentation.pageDescription);
+		presentation.groupStats = CollectGroupStats(a_pageIdentity, a_pageName, presentation.pageDescription,
+			presentation.virtualStats);
 		presentation.pageName = a_pageName;
 		if (g_hasFontAwesome) {
 			DrawIcon(kPageIcon, kGold);
@@ -1043,14 +1167,28 @@ namespace
 		ModSettings::PageSettingsCallbacks callbacks{};
 		callbacks.beginGroup = [&](const ModSettings::GroupVisit& group) { return BeginGroup(presentation, group); };
 		callbacks.endGroup = [&](const ModSettings::GroupVisit&) { EndGroup(presentation); };
-		callbacks.checkbox = DrawCheckbox;
-		callbacks.slider = DrawSlider;
-		callbacks.dropdown = DrawDropdown;
-		callbacks.textbox = DrawTextbox;
-		callbacks.text = DrawText;
-		callbacks.color = DrawColor;
-		callbacks.keymap = DrawKeymap;
-		callbacks.button = DrawButton;
+		callbacks.checkbox = [&](const ModSettings::CheckboxVisit& visit) -> std::optional<bool> {
+			return VirtualContentVisible(presentation) ? DrawCheckbox(visit) : std::nullopt;
+		};
+		callbacks.slider = [&](const ModSettings::SliderVisit& visit) {
+			return VirtualContentVisible(presentation) ? DrawSlider(visit) : ModSettings::SliderUpdate{};
+		};
+		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> {
+			return VirtualContentVisible(presentation) ? DrawDropdown(visit) : std::nullopt;
+		};
+		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) {
+			return VirtualContentVisible(presentation) ? DrawTextbox(visit) : ModSettings::TextboxUpdate{};
+		};
+		callbacks.text = [&](const ModSettings::TextVisit& visit) { DrawPresentationText(presentation, visit); };
+		callbacks.color = [&](const ModSettings::ColorVisit& visit) {
+			return VirtualContentVisible(presentation) ? DrawColor(visit) : ModSettings::ColorUpdate{};
+		};
+		callbacks.keymap = [&](const ModSettings::KeymapVisit& visit) {
+			return VirtualContentVisible(presentation) ? DrawKeymap(visit) : ModSettings::KeymapAction::None;
+		};
+		callbacks.button = [&](const ModSettings::ButtonVisit& visit) {
+			return VirtualContentVisible(presentation) && DrawButton(visit);
+		};
 
 		if (ModSettings::VisitPageSettings(a_pageIdentity, callbacks)) {
 			ModSettings::CommitIniDirtyPage(a_pageIdentity);
