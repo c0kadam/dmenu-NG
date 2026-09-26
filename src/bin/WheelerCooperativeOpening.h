@@ -8,8 +8,8 @@ namespace WheelerCooperativeOpening
 {
 	inline constexpr std::uint64_t kOwnerId = 0x444D454E55000001ULL;
 
-	// Two bounded discovery attempts are made: during dMenu initialization and
-	// once at SKSE post-load after all normal plugins are resident.
+	// Initialize after the input hook is installed at kDataLoaded. Discovery and
+	// binding publication require a working input hook; the extension is optional.
 	void Initialize();
 	void RetryInitializationAfterPluginsLoaded();
 	void PublishCurrentBindings();

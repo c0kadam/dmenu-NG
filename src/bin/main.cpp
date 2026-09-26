@@ -21,13 +21,18 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 		Utils::InitializeFormEditorIDCache();
 		Trainer::init();
 
+		if (Hooks::InstallInputDispatch()) {
+			WheelerCooperativeOpening::Initialize();
+		} else {
+			logger::error("Deferred input hook installation failed; dMenu physical input is unavailable"sv);
+		}
+
 		// Restore configured values after plugins have applied their game-setting overrides.
 		ModSettings::save_all_game_setting();
 		ModSettings::SendAllSettingsUpdateEvent();
 		break;
 	case SKSE::MessagingInterface::kPostLoad:
 		IME::SimpleIMEBridge::Get().DetectAfterPluginsLoaded();
-		WheelerCooperativeOpening::RetryInitializationAfterPluginsLoaded();
 		FlickIntegration::InitializeAfterPluginsLoaded();
 		SkseMenuFrameworkIntegration::InitializeAfterPluginsLoaded();
 		DMenuAPI::DispatchInterface();
@@ -42,10 +47,9 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 	Settings::init();
 	ModSettings::init(); // init modsetting before everyone else
 	SKSE::AllocTrampoline(14 * 4);
-	if (!Renderer::Install() || !Hooks::Install() || !Hooks::IsInputDispatchInstalled()) {
+	if (!Renderer::Install() || !Hooks::InstallWeatherHook()) {
 		return false;
 	}
-	WheelerCooperativeOpening::Initialize();
 	return true;
 }
 

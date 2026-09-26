@@ -12,28 +12,46 @@ namespace
 {
 	std::mutex s_installLock;
 	bool s_weatherHookInstalled = false;
+	bool s_inputDispatchAttempted = false;
 	std::atomic_bool s_inputDispatchInstalled = false;
 }
 
-bool Hooks::Install()
+bool Hooks::InstallWeatherHook()
+{
+	std::lock_guard lock(s_installLock);
+	if (s_weatherHookInstalled) {
+		return true;
+	}
+
+	const auto* weather = RuntimeCompatibility::GetResolvedCallSite(RuntimeCompatibility::Hook::Weather);
+	if (!weather) {
+		logger::error("Weather hook preflight was not completed; weather hook was not installed"sv);
+		return false;
+	}
+
+	if (!onWeatherChange::install(weather->address)) {
+		return false;
+	}
+	s_weatherHookInstalled = true;
+	return true;
+}
+
+bool Hooks::InstallInputDispatch()
 {
 	std::lock_guard lock(s_installLock);
 	if (s_inputDispatchInstalled.load(std::memory_order_acquire)) {
 		return true;
 	}
-
-	const auto* weather = RuntimeCompatibility::GetResolvedCallSite(RuntimeCompatibility::Hook::Weather);
-	const auto* input = RuntimeCompatibility::GetResolvedCallSite(RuntimeCompatibility::Hook::InputEventDispatch);
-	if (!weather || !input) {
-		logger::error("Gameplay hook preflight was not completed; gameplay hooks were not installed"sv);
+	// Never re-hook this thunk, even if a previous patch attempt failed.
+	if (s_inputDispatchAttempted) {
 		return false;
 	}
+	s_inputDispatchAttempted = true;
 
-	if (!s_weatherHookInstalled) {
-		if (!onWeatherChange::install(weather->address)) {
-			return false;
-		}
-		s_weatherHookInstalled = true;
+	const auto* input = RuntimeCompatibility::GetResolvedCallSite(RuntimeCompatibility::Hook::InputEventDispatch);
+	if (!input || !RuntimeCompatibility::RevalidateCallSite(RuntimeCompatibility::Hook::InputEventDispatch)) {
+		logger::error("Input-dispatch callsite validation failed; input hook was not installed"sv);
+		return false;
 	}
 	if (!OnInputEventDispatch::Install(input->address)) {
 		return false;

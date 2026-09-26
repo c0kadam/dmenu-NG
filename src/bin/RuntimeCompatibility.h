@@ -27,5 +27,7 @@ namespace RuntimeCompatibility
 
 	// Resolve and validate every runtime-sensitive call before patching any of them.
 	[[nodiscard]] bool PreflightHooks();
+	// Recheck a preflighted site and its current chain before deferred installation.
+	[[nodiscard]] bool RevalidateCallSite(Hook a_hook);
 	[[nodiscard]] const ResolvedCallSite* GetResolvedCallSite(Hook a_hook) noexcept;
 }

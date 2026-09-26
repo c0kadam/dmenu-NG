@@ -340,6 +340,23 @@ namespace RuntimeCompatibility
 		return valid;
 	}
 
+	bool RevalidateCallSite(Hook a_hook)
+	{
+		const auto* preflighted = GetResolvedCallSite(a_hook);
+		if (!preflighted) {
+			return false;
+		}
+		const auto current = ResolveCallSite(a_hook, REL::Module::get().version());
+		if (!current) {
+			return false;
+		}
+		if (current->address != preflighted->address) {
+			logger::error("{}: callsite changed since preflight; deferred installation rejected"sv, GetHookName(a_hook));
+			return false;
+		}
+		return true;
+	}
+
 	const ResolvedCallSite* GetResolvedCallSite(Hook a_hook) noexcept
 	{
 		const auto index = static_cast<std::size_t>(a_hook);

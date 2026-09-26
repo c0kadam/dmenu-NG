@@ -21,7 +21,9 @@ namespace Hooks
 		static void DispatchInputEvent(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher, RE::InputEvent** a_evns);
 		static inline REL::Relocation<decltype(DispatchInputEvent)> _DispatchInputEvent;
 	};
-	[[nodiscard]] bool Install();
+	[[nodiscard]] bool InstallWeatherHook();
+	// Install once at kDataLoaded, after wheel plugins' input hooks.
+	[[nodiscard]] bool InstallInputDispatch();
 	[[nodiscard]] bool IsInputDispatchInstalled() noexcept;
 }
 
