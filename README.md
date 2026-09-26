@@ -1,60 +1,112 @@
+# dMenu NG
+
 <p align="center">
-  <img src="https://staticdelivery.nexusmods.com/mods/1704/images/166751/166751-1766729765-1623383754.png" alt="dMenu NG" width="220">
+  <img src="images/dmenu/dmenu-sksemf-flick.png" alt="dMenu NG with optional SKSE Menu Framework and FLICK settings frontends" width="100%">
 </p>
 
-# dMenu NG
-dMenu NG is an unofficial standalone DLL update for
-[dMenu](https://github.com/D7ry/dMenu). It keeps the
-original mod's asset setup, but modernises the plugin for current Skyrim
-runtimes, improves controller and text-input workflows, and expands what custom
-dMenu pages can do.
+<p align="center">
+  An unofficial modern standalone DLL update of dTry/D7ry's dMenu for Skyrim SE/AE, with expanded input, configuration and integration capabilities.
+</p>
 
-This GitHub repo is mainly here for source, API documentation, and reference
-builds. For normal users, the Nexus page is still the main release page:
+<p align="center">
+  <a href="https://www.nexusmods.com/skyrimspecialedition/mods/166751"><img alt="Nexus Mods Download" src="https://img.shields.io/badge/Nexus%20Mods-Download-DA8E35?logo=nexusmods&amp;logoColor=white"></a>
+  <a href="https://github.com/c0kadam/dmenu-NG/tags"><img alt="Current source version" src="https://img.shields.io/github/v/tag/c0kadam/dmenu-NG?label=source%20version"></a>
+  <a href="#building-from-source"><img alt="Build from source" src="https://img.shields.io/badge/build-from%20source-2F81F7"></a>
+  <a href="https://github.com/c0kadam/dmenu-NG/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/c0kadam/dmenu-NG"></a>
+  <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-3DA639"></a>
+</p>
 
-https://www.nexusmods.com/skyrimspecialedition/mods/166751
+> [!IMPORTANT]
+> Get end-user downloads and installation support from [Nexus Mods](https://www.nexusmods.com/skyrimspecialedition/mods/166751). A GitHub source checkout is not a complete player installation. Original dMenu is still required for its base assets and content; dMenu NG replaces and extends the DLL/runtime portion.
+
+## What is dMenu NG?
+
+dMenu NG updates the standalone DLL for [dMenu](https://github.com/D7ry/dMenu),
+originally created by dTry/D7ry. It retains the original dMenu asset setup while
+adding support for modern Skyrim SE/AE runtimes, improving controller and text
+input, and expanding custom settings pages and their configuration options.
+
+This is an independent, unofficial project, not an official continuation or an
+endorsement by dTry/D7ry. This repository provides source, API documentation,
+and reference build instructions. Normal player installation starts with the
+original dMenu and the dMenu NG package from Nexus Mods.
 
 ## Highlights
 
-- CommonLibSSE-NG port for modern SE/AE runtimes.
-- Strict startup callsite validation that preserves compatible pre-existing
-  SKSE hook chains.
-- Crash and safety fixes around AIM spawning, settings handling, and newer game
-  versions.
-- Gamepad navigation, separate gamepad toggle/modifier bindings, and a gamepad
-  hint toggle.
-- Native IME input for Chinese, Japanese, and Korean text fields.
-- Built-in on-screen keyboard for controller-driven text entry.
-- Localisation through `Data/SKSE/Plugins/dMenu/translations.txt`.
-- Better glyph coverage and custom font support.
-- Grid layout support for custom mod settings pages.
-- Optional FLICK and SKSE Menu Framework settings frontends.
-- Safer INI saving that edits existing files instead of rebuilding them from
-  scratch.
-- Animated hint media for custom settings: flipbook, GIF, WebP, and WebM
-  previews.
-- External API for other SKSE plugins that need to open or close dMenu cleanly.
+| Area | dMenu NG capabilities |
+| --- | --- |
+| Compatibility and stability | CommonLibSSE-NG port for modern SE/AE runtimes; strict startup callsite validation preserves compatible pre-existing SKSE hook chains. Crash and safety fixes cover AIM spawning, settings handling, and newer game versions. |
+| Controller and input | Gamepad navigation, separate gamepad toggle/modifier bindings, and a gamepad hint toggle. |
+| Text entry and IME | Native IME input for Chinese, Japanese, and Korean text fields, plus a built-in on-screen keyboard for controller text entry. |
+| Localisation and fonts | Translations through `Data/SKSE/Plugins/dMenu/translations.txt`, improved glyph coverage, and custom font support. |
+| Custom settings | Expanded custom mod settings functionality, including grid layouts. |
+| Settings frontends | Native dMenu settings with optional FLICK and SKSE Menu Framework frontends using the same settings model. |
+| Media and hints | Animated custom-settings previews using flipbook, GIF, WebP, and WebM media. |
+| INI persistence | Safer saving edits existing INI files instead of rebuilding them from scratch. |
+| External API | A versioned interface lets other SKSE plugins open, close, toggle, and query dMenu without simulating a hotkey. |
 
-## Important Note
+## Integration Overview
 
-This is a standalone DLL update. It replaces the plugin file, but the original
-dMenu mod is still required for its assets and base content.
+Choose the interface that fits your setup. Native dMenu is always available;
+the two external frontends are optional and can be installed together.
 
-For localisation support, make sure the included `translations.txt` file is
-present in:
+| Frontend | Requirement | Purpose |
+| --- | --- | --- |
+| Native dMenu | Built-in standard interface; normal dMenu asset setup | Browse and edit custom settings directly in dMenu. |
+| [FLICK](https://github.com/Fuzzlesz/FUCK) | Optional; install FLICK separately | Access the same parsed custom-settings pages through [FLICK's interface](#flick). |
+| [SKSE Menu Framework 3](https://github.com/QTR-Modding/SKSE-Menu-Framework-3) | Optional; install SKSE Menu Framework separately | Access the same settings through the [Mod Control Panel](#skse-menu-framework-3). |
 
-```text
-Data/SKSE/Plugins/dMenu/translations.txt
-```
+## Optional Settings Frontends
+
+**dMenu custom settings remain the canonical settings model.** FLICK and SKSE
+Menu Framework are alternate interfaces to those settings. They operate on
+the same dMenu settings and target INIs, with the existing dMenu persistence
+behavior; they do not create separate configuration stores.
+
+Neither framework is bundled with dMenu NG or hard-linked into `dmenu.dll`.
+Native dMenu remains usable when both are absent, and either or both can be
+installed alongside it. The integrations discover the frameworks through
+their public APIs.
+
+The screenshots below show example custom settings pages supplied by other
+mods and presented through dMenu NG's integrations. Click a screenshot to view
+its original size.
+
+### FLICK
+
+With [FLICK](https://github.com/Fuzzlesz/FUCK) installed, dMenu NG exposes its
+parsed custom-settings pages through FLICK while retaining dMenu's existing
+settings and INI persistence behavior. These examples show Wheeler Styles and
+Wheeler Controls pages.
+
+<p align="center">
+  <a href="images/dmenu/dmenu-flick-1.png"><img src="images/dmenu/dmenu-flick-1.png" alt="FLICK showing the Wheeler Styles custom page with nested layout sections" width="49%"></a>
+  <a href="images/dmenu/dmenu-flick-2.png"><img src="images/dmenu/dmenu-flick-2.png" alt="FLICK showing Wheeler Controls sliders, checkboxes, and input-binding sections" width="49%"></a>
+</p>
+
+### SKSE Menu Framework 3
+
+With [SKSE Menu Framework 3](https://github.com/QTR-Modding/SKSE-Menu-Framework-3)
+installed, the same dMenu settings are available in its Mod Control Panel.
+Changes use the shared settings model and the same target INIs as native
+dMenu. These examples show Wheeler Controls with gamepad bindings and Wheeler
+Styles with grouped settings. The integration uses the framework's
+[public API](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API).
+
+<p align="center">
+  <a href="images/dmenu/dmenu-sksemf-1.png"><img src="images/dmenu/dmenu-sksemf-1.png" alt="SKSE Menu Framework showing Wheeler Controls and gamepad remapping controls" width="49%"></a>
+  <a href="images/dmenu/dmenu-sksemf-2.png"><img src="images/dmenu/dmenu-sksemf-2.png" alt="SKSE Menu Framework showing grouped Wheeler Styles settings in the Mod Control Panel" width="49%"></a>
+</p>
 
 ## Installation Layout
 
 Install the original dMenu first, then let dMenu NG overwrite the plugin files.
-Release archives include the compiled plugin; the source repository does not
+Nexus runtime archives include the compiled plugin; the source repository does not
 track `dmenu.dll`. The installed layout should include:
 
 ```text
 Data/SKSE/Plugins/dmenu.dll
+Data/SKSE/Plugins/dMenu/dmenu.defaults.ini
 Data/SKSE/Plugins/dMenu/hint_media.ini
 Data/SKSE/Plugins/dMenu/translations.txt
 Data/SKSE/Plugins/dMenu/customSettings/...
@@ -66,18 +118,12 @@ Keep dMenu NG below the original dMenu mod in your mod manager so this DLL takes
 priority. The dMenu NG archive contains its DLL and the NG runtime additions
 listed above; it does not redistribute the original mod's base assets.
 
-## Optional Settings Frontends
+For localisation support, make sure the included `translations.txt` file is
+present in:
 
-dMenu NG can optionally expose its custom settings pages through
-[FLICK](https://github.com/Fuzzlesz/FUCK) and
-[SKSE Menu Framework 3](https://github.com/QTR-Modding/SKSE-Menu-Framework-3),
-using their public APIs. The SKSE Menu Framework public API is available
-[here](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API).
-
-Both integrations are optional. Neither framework is bundled with dMenu NG or
-hard-linked into `dmenu.dll`, and native dMenu remains usable without either.
-These frontends use dMenu's existing settings model and do not create separate
-settings stores.
+```text
+Data/SKSE/Plugins/dMenu/translations.txt
+```
 
 ## External API For Mod Authors
 
@@ -134,7 +180,7 @@ The configure step checks both the CommonLibSSE-NG version and exact Git
 revision. Supported Skyrim runtimes are 1.5.97, 1.6.1170, 1.7.99, and 1.7.104;
 other versions fail closed before any hooks are installed.
 
-## Build
+## Building from Source
 
 Configure without copying the output anywhere:
 
