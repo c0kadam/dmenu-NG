@@ -179,7 +179,7 @@ This licensing applies because the plugin statically links CommonLibSSE-NG
 7.2.0. See [LICENSE](LICENSE), [EXCEPTIONS.md](EXCEPTIONS.md), and
 [NOTICE.md](NOTICE.md) for the complete terms and attribution.
 
-[LICENSES/](LICENSES/README.md) preserves license texts for specifically
+[LICENSES/](docs/LICENSING.md) preserves license texts for specifically
 identified upstream, API, and dependency components. The component-specific
 MIT, LGPL, and GPL terms apply to those identified components. Their presence
 does not mean the complete dMenu NG project is triple-licensed or offered
