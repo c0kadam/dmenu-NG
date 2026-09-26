@@ -169,6 +169,7 @@ namespace
 
 	void PushRelativeFont(float a_baseFontSize, float a_scale)
 	{
+		// Use the host's current text height; PushFontScaled starts from font metadata instead.
 		FUCK::PushFont(FUCK::GetFont(FUCK::Font::kRegular), a_baseFontSize * a_scale);
 	}
 
@@ -389,6 +390,7 @@ namespace
 
 	void DrawPresentationText(RenderState& a_state, const ModSettings::TextVisit& a_text)
 	{
+		// A structural text entry can act as a disclosure without changing the settings tree.
 		const auto found = a_state.virtualGroups.find(a_text.identity);
 		if (found == a_state.virtualGroups.end()) {
 			if (ContentVisible(a_state)) DrawText(a_text);
@@ -456,6 +458,7 @@ namespace
 
 	bool DMenuPageTool::OnAsyncInput(const void* a_event)
 	{
+		// FLICK passes input here before blocking the game; ModSettings still owns key capture.
 		if (!open_) return false;
 		const auto* const* events = static_cast<const RE::InputEvent* const*>(a_event);
 		bool consumed = false;
@@ -470,6 +473,7 @@ namespace
 			if (button->IsDown()) {
 				ModSettings::ObserveKeymapCaptureInput(*input, true);
 				if (!capture) continue;
+				// Let the click on Cancel reach the button instead of binding Mouse Left.
 				if (left && cancelKeymap_ == captureKeymap_ && (cancelHovered_ || cancelMouseClick_)) {
 					cancelMouseClick_ = true;
 					consumed = true;
@@ -565,6 +569,7 @@ namespace
 		cancelRendered_ = false;
 		PushPageStyle();
 		RenderState state{};
+		// The host reports the active text height, including its own font scaling.
 		state.baseFontSize = FUCK::GetTextLineHeight();
 		state.pageName = sourceName_;
 		state.groups = CollectGroupStats(page_, sourceName_, state.description, state.virtualGroups);
@@ -667,6 +672,7 @@ namespace
 			FUCK::PopID();
 			return pressed;
 		};
+		// Commit only the page that accepted an edit during this draw.
 		if (ModSettings::VisitPageSettings(page_, callbacks)) ModSettings::CommitIniDirtyPage(page_);
 		if (!cancelRendered_ || !ModSettings::IsExternalKeymapCaptureActive() ||
 			ModSettings::keyMapListening != captureKeymap_) {
@@ -689,14 +695,17 @@ namespace FlickIntegration
 		static bool initialized = false;
 		if (initialized) return;
 		initialized = true;
+		// FLICK is optional; a failed connection leaves dMenu's own settings usable.
 		if (!FUCK::Connect(Plugin::NAME.data())) {
 			logger::info("FLICK API 4 frontend unavailable");
 			return;
 		}
 
+		// FLICK keeps the registered pointers, so the tools must live for the process.
 		static std::vector<std::unique_ptr<DMenuPageTool>> tools;
 		const std::string groupName = Settings::frontend_group_name;
 		std::unordered_set<std::string> names;
+		// Parsed pages provide stable identities for FLICK's one-time registration.
 		ModSettings::ForEachLoadedPage([&](const ModSettings::PageVisit& page) {
 			std::string base(page.name);
 			if (base.empty()) base = "Unnamed Page";

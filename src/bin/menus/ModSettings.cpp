@@ -121,6 +121,7 @@ namespace
 
 	bool BeginExternalKeyMapCapture(ModSettings::mod_setting* mod, ModSettings::setting_keymap* keymap)
 	{
+		// External menus use the same listening state as dMenu's own keymap controls.
 		if (!mod || !keymap || ModSettings::keyMapListening != nullptr) {
 			return false;
 		}
@@ -2457,6 +2458,7 @@ bool ModSettings::VisitPageSettings(
 	const void* a_pageIdentity,
 	const PageSettingsCallbacks& a_callbacks)
 {
+	// Frontends visit the parsed entries directly, so edits update the existing model.
 	if (!a_pageIdentity) {
 		return false;
 	}
@@ -2799,6 +2801,7 @@ void ModSettings::for_each_setting(
 				entryEnabled
 			};
 			if (entryEnabled && callbacks.button(visit)) {
+				// Buttons send an event rather than creating an INI edit.
 				std::string eventName = "dmenu_buttonCallback";
 				send_mod_callback_event(eventName, button->id);
 			}

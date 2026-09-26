@@ -411,6 +411,7 @@ std::optional<std::uint32_t> InputListener::ToInputCode(const RE::ButtonEvent& a
 
 InputListener::InputDeviceClass InputListener::ClassifyInputCode(std::uint32_t a_inputCode)
 {
+	// Zero means Unmapped in keymap settings, despite falling in the keyboard range.
 	if (a_inputCode == 0 || a_inputCode >= kGamepadEnd) return InputDeviceClass::Unknown;
 	if (a_inputCode < kMouseOffset) return InputDeviceClass::Keyboard;
 	if (a_inputCode < kGamepadOffset) return InputDeviceClass::Mouse;

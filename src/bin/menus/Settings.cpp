@@ -101,6 +101,7 @@ namespace ini
 {
 	void flush()
 	{
+		// Keep the frontend title load-only so Save does not add it to a user's INI.
 		settingsLoader loader(SETTINGFILE_PATH);
 		loader.setActiveSection("UI");
 		loader.save(Settings::relative_window_size_h, "relative_window_size_h");
@@ -162,6 +163,7 @@ namespace ini
 		loader.load(Settings::lockWindowSize, "lockWindowSize");
 		loader.load(Settings::lockWindowPos, "lockWindowPos");
 		loader.load(Settings::fontScale, "fontScale");
+		// Shipped dmenu.defaults.ini fills gaps; explicit dmenu.ini values win.
 		Settings::frontend_group_name = "dMenu";
 		settingsLoader defaultsLoader(DEFAULT_SETTINGFILE_PATH);
 		defaultsLoader.setActiveSection("UI");

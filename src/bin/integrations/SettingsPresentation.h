@@ -45,6 +45,7 @@ namespace SettingsPresentation
 		Count
 	};
 
+	// These counts describe how to draw a page; they are not saved settings.
 	struct GroupStats
 	{
 		std::size_t directLeaves = 0;
@@ -106,6 +107,7 @@ namespace SettingsPresentation
 
 	inline InputDeviceClass InputContext(const GroupStats& a_stats)
 	{
+		// Mapped siblings help choose an icon for an unmapped key in the same group.
 		const auto keyboard = a_stats.mappedKeymapDevices[static_cast<std::size_t>(InputDeviceClass::Keyboard)];
 		const auto mouse = a_stats.mappedKeymapDevices[static_cast<std::size_t>(InputDeviceClass::Mouse)];
 		const auto gamepad = a_stats.mappedKeymapDevices[static_cast<std::size_t>(InputDeviceClass::Gamepad)];
@@ -129,6 +131,7 @@ namespace SettingsPresentation
 
 	inline InputDeviceClass ResolveKeymapDevice(const ModSettings::KeymapVisit& a_keymap, InputDeviceClass a_parentContext)
 	{
+		// The current binding wins; group context and IDs are only fallbacks.
 		const auto bound = InputListener::ClassifyInputCode(a_keymap.bindingCode);
 		if (bound != InputDeviceClass::Unknown) return bound;
 		if (a_parentContext != InputDeviceClass::Unknown) return a_parentContext;
@@ -241,6 +244,7 @@ namespace SettingsPresentation
 		callbacks.dropdown = [&](const ModSettings::DropdownVisit& visit) -> std::optional<int> { countLeaf(visit.label, VisualKind::Dropdown); return std::nullopt; };
 		callbacks.textbox = [&](const ModSettings::TextboxVisit& visit) { countLeaf(visit.label, VisualKind::Textbox); return ModSettings::TextboxUpdate{}; };
 		callbacks.text = [&](const ModSettings::TextVisit& visit) {
+			// A structural text marker can head a virtual group in either external frontend.
 			if (!activeMarkers.empty() && IsStructuralText(visit)) {
 				activeMarkers.back() = visit.identity;
 				a_virtualStats.try_emplace(visit.identity);

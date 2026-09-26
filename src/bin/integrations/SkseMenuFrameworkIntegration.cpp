@@ -26,6 +26,7 @@
 namespace
 {
 	constexpr auto kFrameworkModuleName = L"SKSEMenuFramework";
+	// Missing core exports disable this optional frontend before any UI calls.
 	constexpr std::array kRequiredExportNames{
 		"AddSectionItem",
 		"igCheckbox",
@@ -70,6 +71,7 @@ namespace
 
 	constexpr std::size_t kMaximumRegisteredPages = 128;
 	using RenderFunction = SKSEMenuFramework::Model::RenderFunction;
+	// Each callback slot keeps a stable page identity for the framework's function-pointer API.
 	std::array<const void*, kMaximumRegisteredPages> g_pageIdentities = {};
 	std::array<std::string, kMaximumRegisteredPages> g_pageNames = {};
 	constexpr float kStackedRowWidth = 500.0f;
@@ -332,6 +334,7 @@ namespace
 		if (g_hasStyleVars) {
 			ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_FramePadding, ImGuiMCP::ImVec2{ 2.0f, 1.0f });
 		}
+		// Older framework builds can use a header when compact tree nodes are unavailable.
 		const bool open = g_hasCompactTree ?
 			ImGuiMCP::TreeNodeEx(label.c_str(),
 				ImGuiMCP::ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiMCP::ImGuiTreeNodeFlags_SpanAvailWidth) :
@@ -826,6 +829,7 @@ namespace
 
 	void DrawPresentationText(PresentationState& a_state, const ModSettings::TextVisit& a_text)
 	{
+		// Structural text can become a UI-only group; the parsed settings stay unchanged.
 		const auto found = a_state.virtualStats.find(a_text.identity);
 		if (found == a_state.virtualStats.end()) {
 			if (VirtualContentVisible(a_state)) {
@@ -1139,6 +1143,7 @@ namespace
 		const bool mouseLeft = button->GetDevice() == RE::INPUT_DEVICE::kMouse && button->GetIDCode() == 0;
 		if (button->IsDown()) {
 			ModSettings::ObserveKeymapCaptureInput(*inputCode, true);
+			// Pass a click on Cancel to the UI instead of capturing Mouse Left.
 			if (capturing && mouseLeft && g_cancelTarget.hovered) {
 				g_cancelTarget.passingMouseClick = true;
 				return false;
@@ -1183,6 +1188,7 @@ namespace SkseMenuFrameworkIntegration
 		if (!module || !HasRequiredExports(module)) {
 			return;
 		}
+		// Optional exports improve presentation; missing ones retain the basic UI.
 		g_hasThemeStyles = ::GetProcAddress(module, "igGetStyleColorVec4") &&
 			::GetProcAddress(module, "igPushStyleColor_Vec4") &&
 			::GetProcAddress(module, "igPopStyleColor");
@@ -1211,6 +1217,7 @@ namespace SkseMenuFrameworkIntegration
 			return;
 		}
 
+		// The input bridge feeds the existing ModSettings capture path while this menu is open.
 		const auto registerInput = reinterpret_cast<RegisterInputEventFunction>(
 			::GetProcAddress(module, "RegisterInpoutEvent"));
 		if (registerInput) {
