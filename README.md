@@ -28,6 +28,7 @@ https://www.nexusmods.com/skyrimspecialedition/mods/166751
 - Localisation through `Data/SKSE/Plugins/dMenu/translations.txt`.
 - Better glyph coverage and custom font support.
 - Grid layout support for custom mod settings pages.
+- Optional FLICK and SKSE Menu Framework settings frontends.
 - Safer INI saving that edits existing files instead of rebuilding them from
   scratch.
 - Animated hint media for custom settings: flipbook, GIF, WebP, and WebM
@@ -64,6 +65,19 @@ Data/SKSE/Plugins/dMenu/hints/...
 Keep dMenu NG below the original dMenu mod in your mod manager so this DLL takes
 priority. The dMenu NG archive contains its DLL and the NG runtime additions
 listed above; it does not redistribute the original mod's base assets.
+
+## Optional Settings Frontends
+
+dMenu NG can optionally expose its custom settings pages through
+[FLICK](https://github.com/Fuzzlesz/FUCK) and
+[SKSE Menu Framework 3](https://github.com/QTR-Modding/SKSE-Menu-Framework-3),
+using their public APIs. The SKSE Menu Framework public API is available
+[here](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API).
+
+Both integrations are optional. Neither framework is bundled with dMenu NG or
+hard-linked into `dmenu.dll`, and native dMenu remains usable without either.
+These frontends use dMenu's existing settings model and do not create separate
+settings stores.
 
 ## External API For Mod Authors
 
@@ -158,11 +172,18 @@ cmake --preset vs2022-windows -DCOPY_OUTPUT=ON
 
 ## License
 
-dMenu NG is distributed under `GPL-3.0-or-later` with the CommonLibSSE-NG
-Modding Exception and GPL-3.0 Linking Exception (with Corresponding Source).
+dMenu NG as a combined project is distributed under `GPL-3.0-or-later` with the
+CommonLibSSE-NG Modding Exception and GPL-3.0 Linking Exception (with
+Corresponding Source).
 This licensing applies because the plugin statically links CommonLibSSE-NG
 7.2.0. See [LICENSE](LICENSE), [EXCEPTIONS.md](EXCEPTIONS.md), and
 [NOTICE.md](NOTICE.md) for the complete terms and attribution.
+
+[LICENSES/](LICENSES/README.md) preserves license texts for specifically
+identified upstream, API, and dependency components. The component-specific
+MIT, LGPL, and GPL terms apply to those identified components. Their presence
+does not mean the complete dMenu NG project is triple-licensed or offered
+under every license in that directory.
 
 The original D7ry/dMenu source was released under MIT. Its original copyright
 and license text are preserved in
@@ -201,6 +222,13 @@ Thanks to dTry for creating the original mod and open-sourcing the code, and to
 the authors and maintainers of CommonLibSSE-NG, Dear ImGui, SimpleIni, spdlog,
 xbyak, nlohmann/json, rapidcsv, rsm-binary-io, fast-cpp-csv-parser, and the
 other libraries used by the project.
+
+dMenu NG optionally integrates with these projects through their public APIs.
+
+- [FLICK](https://github.com/Fuzzlesz/FUCK) by Fuzzlesz.
+- [SKSE Menu Framework 3](https://github.com/QTR-Modding/SKSE-Menu-Framework-3)
+  by QTR-Modding, with its
+  [public API](https://github.com/QTR-Modding/SKSE-Menu-Framework-3-API).
 
 SimpleIME compatibility was validated with
 [SimpleIME 2.2.1](https://github.com/cyfewlp/SimpleIME) by cyfewlp [JamieYin101](https://www.nexusmods.com/profile/JamieYin101). SimpleIME

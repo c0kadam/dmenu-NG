@@ -8,6 +8,12 @@ distributed under GNU GPL version 3 or later with the CommonLibSSE-NG Modding
 Exception and GPL-3.0 Linking Exception (with Corresponding Source). The full
 terms are in `LICENSE` and `EXCEPTIONS.md`.
 
+The root `LICENSE` and `EXCEPTIONS.md` govern the combined dMenu NG work.
+`LICENSES/` preserves license texts for specifically identified upstream, API,
+and dependency components. Component-specific MIT, LGPL, and GPL terms apply
+only to those identified components. The repository's multiple license files
+do not mean the entire combined work is offered under all of those licenses.
+
 Project source: https://github.com/c0kadam/dmenu-NG
 
 Copyright notices for project-owned modifications include:
@@ -76,6 +82,15 @@ The public API is licensed under LGPL-2.1; its exact license text is preserved
 in `LICENSES/SKSEMenuFramework-API-LGPL-2.1.txt`. The header performs runtime
 discovery of `SKSEMenuFramework.dll`; the framework is not bundled with dMenu
 NG and is not linked into `dmenu.dll`.
+
+## Wheeler Refined Interoperability
+
+dMenu NG optionally interoperates with Wheeler Refined through its
+CooperativeOpening API so dMenu's configured hotkey can still be recognized
+while Wheeler is open.
+
+Wheeler Refined is not bundled with dMenu NG. `dmenu.dll` does not hard-link
+against `wheeler.dll`, and dMenu continues operating when Wheeler is absent.
 
 ## CommonLibSSE-NG
 
