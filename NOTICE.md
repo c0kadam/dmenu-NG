@@ -122,6 +122,13 @@ NanoSVG and NanoSVG rasterizer source are bundled under `src/include/lib/`.
 Their original zlib-style copyright and license notices are embedded in
 `nanosvg.h` and `nanosvgrast.h` and must remain intact.
 
+CommonLibSSE-NG patch-safety support compiles Hacker Disassembler Engine 64
+from MinHook v1.3.4 at commit `c3fcafdc10146beb5919319d0683e44e3c30d537`.
+This code is incorporated through the pinned CommonLibSSE-NG build; no
+separate MinHook DLL or runtime dependency is introduced. The complete,
+unmodified upstream redistribution notice is preserved in
+`LICENSES/third-party/minhook-hde64.txt`.
+
 The build also resolves the following dependencies through vcpkg. They remain
 under their respective upstream licenses:
 
