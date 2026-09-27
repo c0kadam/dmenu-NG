@@ -1,6 +1,7 @@
 #include "RuntimeCompatibility.h"
-#include "HookValidation.h"
+#include "CallSiteDiscovery.h"
 
+#include <REL/Offset2ID.h>
 #include <array>
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
@@ -9,24 +10,10 @@ namespace RuntimeCompatibility
 {
 	namespace
 	{
-		struct RuntimeOffsets
+		RuntimeVersion GetVersionParts(REL::Version a_version) noexcept
 		{
-			REL::Version version;
-			std::ptrdiff_t d3dInit;
-			std::ptrdiff_t dxgiPresent;
-			std::ptrdiff_t weather;
-			std::ptrdiff_t inputEventDispatch;
-		};
-
-		// Verified against the matching Address Library database and executable for
-		// 1.6.1170, 1.7.99, and 1.7.104. The 1.5.97 values are the established
-		// dMenu call sites and are still guarded by instruction/context validation.
-		constexpr std::array RUNTIME_OFFSETS{
-			RuntimeOffsets{ SKYRIM_1_5_97, 0x9, 0x9, 0x29C, 0x7B },
-			RuntimeOffsets{ SKYRIM_1_6_1170, 0x275, 0x9, 0x3E6, 0x7B },
-			RuntimeOffsets{ SKYRIM_1_7_99, 0x275, 0x9, 0x3E6, 0x7B },
-			RuntimeOffsets{ SKYRIM_1_7_104, 0x275, 0x9, 0x3E6, 0x7B }
-		};
+			return { a_version[0], a_version[1], a_version[2], a_version[3] };
+		}
 
 		struct HookDefinition
 		{
@@ -57,12 +44,7 @@ namespace RuntimeCompatibility
 
 		[[nodiscard]] const RuntimeOffsets* FindRuntimeOffsets(REL::Version a_version) noexcept
 		{
-			for (const auto& entry : RUNTIME_OFFSETS) {
-				if (entry.version == a_version) {
-					return std::addressof(entry);
-				}
-			}
-			return nullptr;
+			return RuntimeCompatibility::FindRuntimeOffsets(GetVersionParts(a_version));
 		}
 
 		[[nodiscard]] std::ptrdiff_t GetOffset(const RuntimeOffsets& a_offsets, Hook a_hook) noexcept
@@ -92,75 +74,53 @@ namespace RuntimeCompatibility
 			return offset <= text.size() && a_size <= text.size() - offset;
 		}
 
-		template <std::size_t N>
-		[[nodiscard]] bool MatchesBytes(std::uintptr_t a_address, const std::array<std::uint8_t, N>& a_expected) noexcept
-		{
-			return IsInTextSegment(a_address, N) &&
-			       std::memcmp(reinterpret_cast<const void*>(a_address), a_expected.data(), N) == 0;
-		}
-
 		[[nodiscard]] bool MatchesCallContext(Hook a_hook, std::uintptr_t a_address, bool a_isAE) noexcept
 		{
-			switch (a_hook) {
-			case Hook::D3DInit:
-				// The older SE call is near the function entry and has a different context.
-				return !a_isAE || MatchesBytes(a_address + 5, std::array<std::uint8_t, 4>{ 0x44, 0x39, 0x6E, 0x2C });
-			case Hook::DXGIPresent:
-				return MatchesBytes(a_address - 5, std::array<std::uint8_t, 5>{ 0xB9, 0x01, 0x00, 0x00, 0x00 }) &&
-			       MatchesBytes(a_address + 5, std::array<std::uint8_t, 2>{ 0x80, 0x3D });
-			case Hook::Weather:
-				{
-					Validation::WeatherCallContext before{};
-					Validation::WeatherCallContext after{};
-					if (a_address < before.size() ||
-					    !IsInTextSegment(a_address - before.size(), before.size()) ||
-					    !IsInTextSegment(a_address + 5, after.size())) {
-						return false;
-					}
-
-					std::memcpy(before.data(), reinterpret_cast<const void*>(a_address - before.size()), before.size());
-					std::memcpy(after.data(), reinterpret_cast<const void*>(a_address + 5), after.size());
-					return Validation::MatchesWeatherCallContext(a_isAE, before, after);
-				}
-			case Hook::InputEventDispatch:
-				return MatchesBytes(a_address - 3, std::array<std::uint8_t, 3>{ 0x48, 0x8B, 0xCE }) &&
-			       MatchesBytes(a_address + 5, std::array<std::uint8_t, 3>{ 0x48, 0x8B, 0x0D });
-			default:
+			if (a_hook == Hook::D3DInit && !a_isAE) {
+				return true;  // Preserve the audited SE D3D context rule.
+			}
+			const std::size_t before = a_hook == Hook::D3DInit ? 0 : a_hook == Hook::DXGIPresent ? 5 : 3;
+			const std::size_t after = a_hook == Hook::D3DInit ? 4 : a_hook == Hook::DXGIPresent ? 2 : 3;
+			if (a_address < before || !IsInTextSegment(a_address - before, before + 5 + after)) {
 				return false;
 			}
+			return Validation::MatchesHookContext(a_hook, a_isAE,
+				{ reinterpret_cast<const std::uint8_t*>(a_address - before), before + 5 + after }, before);
 		}
 
-		[[nodiscard]] std::optional<ResolvedCallSite> ResolveCallSite(Hook a_hook, REL::Version a_version)
+		struct TargetValidation
+		{
+			Validation::TargetResult result;
+			std::uintptr_t expectedTarget;
+			Validation::ExternalTargetInspection external;
+		};
+
+		TargetValidation ValidateTarget(Hook a_hook, std::uintptr_t address, std::uintptr_t target,
+			std::uintptr_t expectedTarget = 0)
+		{
+			const auto definition = GetHookDefinition(a_hook);
+			const bool inSkyrim = IsInTextSegment(target, 1);
+			bool expected = true;
+			if (inSkyrim && REL::Module::IsAE()) {
+				if (expectedTarget == 0) {
+					expectedTarget = REL::ID(definition.expectedAETargetID).address();
+				}
+				expected = expectedTarget != 0 && target == expectedTarget;
+			}
+			Validation::ExternalTargetInspection external{ Validation::ExecutableMemoryStatus::QueryFailed, false };
+			if (!inSkyrim) {
+				external = Validation::InspectExternalTarget(target, address, reinterpret_cast<std::uintptr_t>(&__ImageBase));
+			}
+			return { Validation::ClassifyTarget(definition.chainPolicy, {
+				inSkyrim, expected, external.memoryStatus == Validation::ExecutableMemoryStatus::Executable,
+				(target >= address && target - address < 5) || external.duplicateOrSelfTarget }), expectedTarget, external };
+		}
+
+		[[nodiscard]] std::optional<ResolvedCallSite> ValidateCallSite(Hook a_hook, REL::Version a_version,
+			std::uintptr_t address, std::uintptr_t a_expectedTarget = 0)
 		{
 			const auto hookName = GetHookName(a_hook);
-			const auto* offsets = FindRuntimeOffsets(a_version);
-			if (!offsets) {
-				logger::error("{}: runtime {} has no verified hook offsets"sv, hookName, a_version.string("."));
-				return std::nullopt;
-			}
-
 			const auto definition = GetHookDefinition(a_hook);
-			const REL::RelocationID relocation{ definition.seID, definition.aeID };
-			const auto baseAddress = relocation.address();
-			if (baseAddress == 0) {
-				logger::error("{}: relocation ID {} resolved to zero for runtime {}"sv,
-					hookName,
-					relocation.id(),
-					a_version.string("."));
-				return std::nullopt;
-			}
-
-			const auto offset = GetOffset(*offsets, a_hook);
-			if (offset < 0 || static_cast<std::uintptr_t>(offset) >
-			                    (std::numeric_limits<std::uintptr_t>::max)() - baseAddress) {
-				logger::error("{}: invalid hook offset 0x{:X} for runtime {}"sv,
-					hookName,
-					offset,
-					a_version.string("."));
-				return std::nullopt;
-			}
-
-			const auto address = baseAddress + static_cast<std::uintptr_t>(offset);
 			const bool callSiteInText = IsInTextSegment(address, 5);
 			std::uint8_t opcode = 0;
 			if (callSiteInText) {
@@ -204,32 +164,10 @@ namespace RuntimeCompatibility
 			}
 
 			const auto originalTarget = static_cast<std::uintptr_t>(signedTarget);
-			const bool targetIsInSkyrim = IsInTextSegment(originalTarget, 1);
-			std::uintptr_t expectedTarget = 0;
-			bool expectedSkyrimTarget = true;
-			if (targetIsInSkyrim && REL::Module::IsAE()) {
-				expectedTarget = REL::ID(definition.expectedAETargetID).address();
-				expectedSkyrimTarget = expectedTarget != 0 && originalTarget == expectedTarget;
-			}
-
-			Validation::ExternalTargetInspection externalInspection{
-				Validation::ExecutableMemoryStatus::QueryFailed,
-				false
-			};
-			if (!targetIsInSkyrim) {
-				externalInspection = Validation::InspectExternalTarget(
-					originalTarget,
-					address,
-					reinterpret_cast<std::uintptr_t>(&__ImageBase));
-			}
-			const bool callSiteSelfTarget = originalTarget >= address && originalTarget - address < 5;
-			const Validation::TargetFacts targetFacts{
-				targetIsInSkyrim,
-				expectedSkyrimTarget,
-				externalInspection.memoryStatus == Validation::ExecutableMemoryStatus::Executable,
-				callSiteSelfTarget || externalInspection.duplicateOrSelfTarget
-			};
-			const auto targetResult = Validation::ClassifyTarget(definition.chainPolicy, targetFacts);
+			const auto validation = ValidateTarget(a_hook, address, originalTarget, a_expectedTarget);
+			const auto targetResult = validation.result;
+			const auto expectedTarget = validation.expectedTarget;
+			const auto externalInspection = validation.external;
 			switch (targetResult) {
 			case Validation::TargetResult::UnexpectedSkyrimTarget:
 				logger::error("{}: CALL target mismatch at 0x{:X} for runtime {} (resolved 0x{:X}, expected Address Library ID {} at 0x{:X})"sv,
@@ -265,29 +203,127 @@ namespace RuntimeCompatibility
 			}
 
 			if (targetResult == Validation::TargetResult::ExternalChainAccepted) {
-				logger::warn("{}: accepted pre-existing executable hook chain for runtime {}: relocation ID {}, offset 0x{:X}, call 0x{:X} -> 0x{:X}"sv,
+				logger::warn("{}: accepted pre-existing executable hook chain for runtime {}: call 0x{:X} -> 0x{:X}"sv,
 					hookName,
 					a_version.string("."),
-					relocation.id(),
-					offset,
 					address,
 					originalTarget);
 			} else {
-				logger::info("{}: validated Skyrim CALL target for runtime {}: relocation ID {}, offset 0x{:X}, call 0x{:X} -> 0x{:X}"sv,
+				logger::info("{}: validated Skyrim CALL target for runtime {}: call 0x{:X} -> 0x{:X}"sv,
 					hookName,
 					a_version.string("."),
-					relocation.id(),
-					offset,
 					address,
 					originalTarget);
 			}
-			return ResolvedCallSite{ address, originalTarget };
+			return ResolvedCallSite{ address, originalTarget, a_expectedTarget };
+		}
+
+		std::optional<ResolvedCallSite> ResolveKnownCallSite(Hook a_hook, REL::Version a_version, const RuntimeOffsets& a_offsets)
+		{
+			const auto definition = GetHookDefinition(a_hook);
+			const REL::RelocationID relocation{ definition.seID, definition.aeID };
+			const auto base = relocation.address();
+			const auto offset = GetOffset(a_offsets, a_hook);
+			logger::info("{}: audited path, relocation ID {}, base 0x{:X}, offset +0x{:X}", GetHookName(a_hook), relocation.id(), base, offset);
+			if (base == 0 || offset < 0 || static_cast<std::uintptr_t>(offset) > (std::numeric_limits<std::uintptr_t>::max)() - base) {
+				logger::error("{}: invalid audited relocation/offset", GetHookName(a_hook));
+				return std::nullopt;
+			}
+			return ValidateCallSite(a_hook, a_version, base + static_cast<std::uintptr_t>(offset));
+		}
+
+		std::uintptr_t FindLibraryAddress(const REL::Offset2ID& a_library, std::uint64_t a_id)
+		{
+			// ID::address() terminates for missing IDs. Enumerate so discovery can
+			// report an absent mapping and return false without patching anything.
+			const auto found = std::find_if(a_library.begin(), a_library.end(),
+				[a_id](const auto& entry) { return entry.id == a_id; });
+			const auto base = REL::Module::get().base();
+			if (found == a_library.end() || found->offset == 0 || found->offset > (std::numeric_limits<std::uintptr_t>::max)() - base) {
+				return 0;
+			}
+			return base + found->offset;
+		}
+
+		std::optional<std::span<const std::uint8_t>> GetDiscoveryFunction(std::uintptr_t a_base)
+		{
+			DWORD64 imageBase{};
+			const auto* function = ::RtlLookupFunctionEntry(a_base, &imageBase, nullptr);
+			if (!function || imageBase != REL::Module::get().base() ||
+			    imageBase + function->BeginAddress != a_base || function->EndAddress <= function->BeginAddress) {
+				return std::nullopt;
+			}
+			const auto length = static_cast<std::size_t>(function->EndAddress - function->BeginAddress);
+			if (length > Validation::kMaxDiscoveryFunctionBytes || !IsInTextSegment(a_base, length)) {
+				return std::nullopt;
+			}
+			for (auto cursor = a_base; cursor < a_base + length;) {
+				MEMORY_BASIC_INFORMATION info{};
+				if (!::VirtualQuery(reinterpret_cast<const void*>(cursor), &info, sizeof(info)) ||
+				    info.State != MEM_COMMIT || (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0 ||
+				    (info.Protect != PAGE_EXECUTE_READ && info.Protect != PAGE_EXECUTE_READWRITE && info.Protect != PAGE_EXECUTE_WRITECOPY)) {
+					return std::nullopt;
+				}
+				const auto region = reinterpret_cast<std::uintptr_t>(info.BaseAddress);
+				if (info.RegionSize > (std::numeric_limits<std::uintptr_t>::max)() - region || region + info.RegionSize <= cursor) {
+					return std::nullopt;
+				}
+				cursor = region + info.RegionSize;
+			}
+			return std::span<const std::uint8_t>{ reinterpret_cast<const std::uint8_t*>(a_base), length };
+		}
+
+		std::optional<ResolvedCallSite> ResolveUnknownCallSite(Hook a_hook, const REL::Offset2ID& a_library)
+		{
+			const auto definition = GetHookDefinition(a_hook);
+			const auto base = FindLibraryAddress(a_library, definition.aeID);
+			const auto expectedTarget = FindLibraryAddress(a_library, definition.expectedAETargetID);
+			const auto name = GetHookName(a_hook);
+			logger::info("{}: discovery relocation ID {}, base 0x{:X}; expected target ID {}, address 0x{:X}",
+				name, definition.aeID, base, definition.expectedAETargetID, expectedTarget);
+			if (base == 0 || expectedTarget == 0 || !IsInTextSegment(expectedTarget, 1)) {
+				logger::error("{}: absent or invalid Address Library mapping; search not started", name);
+				return std::nullopt;
+			}
+			const auto function = GetDiscoveryFunction(base);
+			if (!function) {
+				logger::error("{}: no safe function range at relocation base (requires unwind entry start, executable .text, size <= 0x{:X}); search not started",
+					name, Validation::kMaxDiscoveryFunctionBytes);
+				return std::nullopt;
+			}
+			logger::info("{}: search range [0x{:X}, 0x{:X}), function size 0x{:X}", name, base, base + function->size(), function->size());
+			const auto result = Validation::DiscoverCallSites(a_hook, REL::Module::IsAE(), *function, base,
+				[=](auto address, auto target) {
+					const auto validation = ValidateTarget(a_hook, address, target, expectedTarget);
+					if (validation.result == Validation::TargetResult::ExternalTargetNotExecutable) {
+						logger::info("{}: external target 0x{:X}: {}", name, target, Validation::GetExecutableMemoryStatusName(validation.external.memoryStatus));
+					}
+					return validation.result;
+				});
+			for (const auto& candidate : result.candidates) {
+				logger::info("{}: candidate +0x{:X}, CALL 0x{:X}, target 0x{:X}, context={}, target={}", name,
+					candidate.relativeOffset, candidate.address, candidate.target,
+					candidate.contextResult == Validation::CallSiteResult::Valid ? "valid" : "mismatch",
+					candidate.targetResult ? Validation::GetTargetResultName(*candidate.targetResult) : "not checked: context rejected");
+			}
+			logger::info("{}: CALL candidates={}, fully validated={}, result={}, decode stop=+0x{:X}", name,
+				result.candidates.size(), result.validCount, Validation::GetDiscoveryStatusName(result.status), result.failureOffset);
+			if (!result.selected) {
+				return std::nullopt;
+			}
+			logger::info("{} discovered and validated at +0x{:X}", name, result.selected->relativeOffset);
+			return ResolvedCallSite{ result.selected->address, result.selected->target, expectedTarget };
 		}
 	}
 
 	bool IsSupported(REL::Version a_version) noexcept
 	{
 		return FindRuntimeOffsets(a_version) != nullptr;
+	}
+
+	bool CanAttemptRuntime(REL::Version a_version) noexcept
+	{
+		return SelectResolutionPath(GetVersionParts(a_version)) != ResolutionPath::Unsupported;
 	}
 
 	std::string_view GetHookName(Hook a_hook) noexcept
@@ -308,33 +344,61 @@ namespace RuntimeCompatibility
 
 	bool PreflightHooks()
 	{
+		g_resolvedSites = {};
 		const auto version = REL::Module::get().version();
-		if (!IsSupported(version)) {
-			logger::error("Unsupported Skyrim runtime {}; no hooks were installed"sv, version.string("."));
-			return false;
-		}
+		const auto path = SelectResolutionPath(GetVersionParts(version));
 
 		auto log = spdlog::default_logger();
 		const auto previousLevel = log ? log->level() : spdlog::level::off;
 		if (log) {
 			log->set_level(spdlog::level::info);
+			log->flush_on(spdlog::level::info);
 		}
 
-		bool valid = true;
-		for (std::size_t index = 0; index < static_cast<std::size_t>(Hook::Count); ++index) {
-			const auto hook = static_cast<Hook>(index);
-			g_resolvedSites[index] = ResolveCallSite(hook, version);
-			valid = valid && g_resolvedSites[index].has_value();
+		logger::info("REL/CommonLib runtime {}: {} path", version.string("."),
+			path == ResolutionPath::Audited ? "known/audited" : path == ResolutionPath::Discovery ? "unknown/discovery" : "unsupported");
+		bool valid = path != ResolutionPath::Unsupported;
+		std::optional<REL::Offset2ID> library;
+		if (path == ResolutionPath::Discovery) {
+			logger::info("Runtime {} is not explicitly verified. EXPERIMENTAL RUNTIME DISCOVERY", version.string("."));
+			valid = REL::Module::IsAE();
+			if (valid) {
+				library.emplace();
+			}
+		}
+		decltype(g_resolvedSites) pending{};
+		if (valid) {
+			for (std::size_t index = 0; index < pending.size(); ++index) {
+				const auto hook = static_cast<Hook>(index);
+				pending[index] = path == ResolutionPath::Audited ?
+					ResolveKnownCallSite(hook, version, *FindRuntimeOffsets(version)) : ResolveUnknownCallSite(hook, *library);
+				if (!pending[index]) {
+					logger::error("{} callsite resolution failed for {}", path == ResolutionPath::Discovery ? "Automatic" : "Audited", GetHookName(hook));
+					valid = false;
+				}
+				if (path == ResolutionPath::Discovery && pending[index]) {
+					for (std::size_t previous = 0; previous < index; ++previous) {
+						if (pending[previous] && (pending[previous]->address == pending[index]->address ||
+							pending[previous]->originalTarget == pending[index]->originalTarget)) {
+							logger::error("{}: duplicate callsite/target across required hooks", GetHookName(hook));
+							valid = false;
+						}
+					}
+				}
+			}
 		}
 
 		if (!valid) {
 			logger::error("Runtime hook preflight failed for Skyrim {}; no hooks were installed"sv, version.string("."));
 		} else {
-			logger::info("Runtime hook preflight passed for Skyrim {}"sv, version.string("."));
+			g_resolvedSites = pending;
+			logger::info("{} runtime preflight passed for Skyrim {}"sv,
+				path == ResolutionPath::Discovery ? "Experimental" : "Audited", version.string("."));
 		}
 
 		if (log) {
 			log->flush();
+			log->flush_on(spdlog::level::err);
 			log->set_level(previousLevel);
 		}
 		return valid;
@@ -346,7 +410,12 @@ namespace RuntimeCompatibility
 		if (!preflighted) {
 			return false;
 		}
-		const auto current = ResolveCallSite(a_hook, REL::Module::get().version());
+		// Revalidate the pinned site, never discover a new location after other
+		// hooks have already been installed. The downstream chain may have changed.
+		const auto version = REL::Module::get().version();
+		const auto* offsets = FindRuntimeOffsets(version);
+		const auto current = offsets ? ResolveKnownCallSite(a_hook, version, *offsets) :
+			ValidateCallSite(a_hook, version, preflighted->address, preflighted->expectedTarget);
 		if (!current) {
 			return false;
 		}

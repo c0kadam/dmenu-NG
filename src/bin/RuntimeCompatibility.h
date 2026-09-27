@@ -1,5 +1,7 @@
 #pragma once
 
+#include "RuntimeLayout.h"
+
 namespace RuntimeCompatibility
 {
 	inline constexpr REL::Version SKYRIM_1_5_97{ 1, 5, 97, 0 };
@@ -7,22 +9,15 @@ namespace RuntimeCompatibility
 	inline constexpr REL::Version SKYRIM_1_7_99{ 1, 7, 99, 0 };
 	inline constexpr REL::Version SKYRIM_1_7_104{ 1, 7, 104, 0 };
 
-	enum class Hook : std::size_t
-	{
-		D3DInit,
-		DXGIPresent,
-		Weather,
-		InputEventDispatch,
-		Count
-	};
-
 	struct ResolvedCallSite
 	{
 		std::uintptr_t address;
 		std::uintptr_t originalTarget;
+		std::uintptr_t expectedTarget{};
 	};
 
 	[[nodiscard]] bool IsSupported(REL::Version a_version) noexcept;
+	[[nodiscard]] bool CanAttemptRuntime(REL::Version a_version) noexcept;
 	[[nodiscard]] std::string_view GetHookName(Hook a_hook) noexcept;
 
 	// Resolve and validate every runtime-sensitive call before patching any of them.

@@ -88,10 +88,11 @@ namespace
 
 		const auto previousLevel = log->level();
 		log->set_level(spdlog::level::info);
-		logger::info("{} v{} by {}"sv, Plugin::NAME, Plugin::VERSION.string(), Plugin::AUTHOR);
-		logger::info("Runtime {}"sv, a_skse->RuntimeVersion().string("."));
+		logger::info("{} v{} by {} - EXPERIMENTAL RUNTIME DISCOVERY"sv, Plugin::NAME, Plugin::VERSION.string(), Plugin::AUTHOR);
+		logger::info("Full SKSE runtime {} (sub/storefront component {})"sv,
+			a_skse->RuntimeVersion().string("."), a_skse->RuntimeVersion()[3]);
 		logger::info("CommonLibSSE-NG {} ({})"sv, DMENU_COMMONLIBSSE_NG_VERSION, DMENU_COMMONLIBSSE_NG_REVISION);
-		logger::info("Log mode: startup banner + errors only"sv);
+		logger::info("Log mode: startup/preflight diagnostics + runtime errors"sv);
 		log->flush();
 		log->set_level(previousLevel);
 	}
@@ -126,7 +127,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	}
 
 	const auto ver = a_skse->RuntimeVersion();
-	if (!RuntimeCompatibility::IsSupported(ver)) {
+	if (!RuntimeCompatibility::CanAttemptRuntime(ver)) {
 		logger::critical(FMT_STRING("Unsupported runtime version {}"), ver.string());
 		return false;
 	}
@@ -141,8 +142,10 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	v.PluginName(Plugin::NAME);
 	v.AuthorName(Plugin::AUTHOR);
 
-	// Explicit versions are intentional: these hooks use audited call-site offsets,
-	// so Address Library availability alone does not make future runtimes safe.
+	// Admit unlisted AE runtimes to our fail-closed preflight. CommonLib supplies
+	// post-629 layouts; this plugin DOES use game structures.
+	v.UsesAddressLibrary();
+	v.UsesUpdatedStructs();
 	v.CompatibleVersions({
 		RuntimeCompatibility::SKYRIM_1_5_97,
 		RuntimeCompatibility::SKYRIM_1_6_1170,
@@ -150,9 +153,8 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 		RuntimeCompatibility::SKYRIM_1_7_104
 	});
 	v.MinimumRequiredXSEVersion({ 2, 0, 20, 0 });
-	// The runtime list above is authoritative. Do not advertise an Address
-	// Library independence mode that this call-site-hooking plugin does not use.
-	v.versionIndependenceEx = 0;
+	// Retain the pinned library's v5 encoding support, without NoStructUse.
+	v.versionIndependenceEx = SKSE::PluginVersionData::kVersionIndependentEx_AddressLibraryV5;
 
 	return v;
 }();
@@ -163,7 +165,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	InitializeLog();
 	LogStartupBanner(a_skse);
 
-	if (!RuntimeCompatibility::IsSupported(a_skse->RuntimeVersion())) {
+	if (a_skse->IsEditor() || !RuntimeCompatibility::CanAttemptRuntime(a_skse->RuntimeVersion())) {
 		logger::critical("Unsupported Skyrim runtime {}; plugin load aborted"sv, a_skse->RuntimeVersion().string("."));
 		return false;
 	}

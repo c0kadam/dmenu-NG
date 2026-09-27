@@ -112,6 +112,11 @@ set(SKSE_SUPPORT_PATCH_SAFETY ON)
 
 add_subdirectory("${CommonLibSSEPath_NG}" CommonLibSSE EXCLUDE_FROM_ALL)
 
+# Reuse the decoder already pinned and compiled by CommonLib's patch checks.
+include(FetchContent)
+FetchContent_GetProperties(hde64)
+target_include_directories("${DMENU_TARGET}" PRIVATE "${hde64_SOURCE_DIR}/src/hde")
+
 find_package(xbyak REQUIRED CONFIG)
 
 find_package(imgui REQUIRED)
