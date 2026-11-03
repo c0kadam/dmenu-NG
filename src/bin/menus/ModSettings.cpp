@@ -2170,7 +2170,7 @@ inline void ModSettings::SendSettingsUpdateEvent(std::string& modName)
 	if (!eventSource) {
 		return;
 	}
-	SKSE::ModCallbackEvent callbackEvent;
+	SKSE::ModCallbackEvent callbackEvent{};
 	callbackEvent.eventName = "dmenu_updateSettings";
 	callbackEvent.strArg = modName;
 	eventSource->SendEvent(&callbackEvent);
@@ -2182,7 +2182,7 @@ void ModSettings::send_mod_callback_event(std::string& mod_name, std::string& st
 	if (!eventSource) {
 		return;
 	}
-	SKSE::ModCallbackEvent callbackEvent;
+	SKSE::ModCallbackEvent callbackEvent{};
 	callbackEvent.eventName = mod_name.data();
 	callbackEvent.strArg = str_arg.data();
 	eventSource->SendEvent(&callbackEvent);
